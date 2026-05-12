@@ -103,7 +103,7 @@ class Service:
         if not path:
             return set()
         try:
-            with open(path, "r") as handle:
+            with open(path, "r", encoding="utf-8") as handle:
                 data = json.load(handle)
         except FileNotFoundError:
             return set()
@@ -144,7 +144,7 @@ class Service:
         if uid in known_uids:
             return
         known_uids.add(uid)
-        with open(self.new_nfc_uids_path, "w") as handle:
+        with open(self.new_nfc_uids_path, "w", encoding="utf-8") as handle:
             json.dump(
                 {"uids": sorted(known_uids)},
                 handle,

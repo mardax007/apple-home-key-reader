@@ -79,6 +79,13 @@ Configuration is done via a JSON file `configuration.json`, with the following 4
     | ACR122U      | `usb:072f:2200`            | Path specifies vendorId and productId    |
 
   * `broadcast`: configures if to use broadcast frames and ECP. If this parameter is true but used NFC device is not based on PN532, will cause an exception to be raised, set to false only if such problems occur;
+  * `known_uids_file`: json file containing known regular NFC UID values. Supported shapes are:
+    * `["UID1", "UID2"]`
+    * `{"uids": ["UID1", "UID2"]}`
+    * `{"UID1": {}, "UID2": {}}`
+  * `new_uids_file`: json file where newly seen unknown regular NFC UID values are saved in `{"uids": [...]}` format;
+  * `on_known_shell_command`: shell command to run when a home key is authenticated or when a known regular NFC UID is read;
+  * `on_unknown_shell_command`: shell command to run when an unknown regular NFC UID is read (after storing it in `new_uids_file`);
 * `hap`: configuration of the HAP-python library, better left unchanged;
     * `port`: network port of the virtual accessory;
     * `persist`: file to store HAP-python pairing data in.
@@ -111,6 +118,7 @@ Other modules:
 Two files will be created as the result of you running the application, assuming no settings were changed:
 - `hap.state`: contains pairing data needed for HAP-python;
 - `homekey.json`: contains all lock configuration data formatted in a human-readable form.
+- `new_nfc_uid.json`: contains unknown regular NFC UID values that were seen by the reader.
 
 
 # Terminology

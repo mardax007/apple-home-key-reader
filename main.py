@@ -50,7 +50,8 @@ def configure_nfc_device(config: dict):
     return clf
 
 
-def configure_homekey_service(config: dict, nfc_device, repository=None):
+def configure_homekey_service(config: dict, nfc_device, repository=None, nfc_config=None):
+    nfc_config = nfc_config or {}
     service = Service(
         nfc_device,
         repository=repository or Repository(config["persist"]),
@@ -59,6 +60,10 @@ def configure_homekey_service(config: dict, nfc_device, repository=None):
         flow=config.get("flow"),
         # Poll no more than ~6 times a second by default
         throttle_polling=float(config.get("throttle_polling") or 0.15),
+        known_nfc_uids_path=nfc_config.get("known_uids_file", "known_nfc_uids.json"),
+        new_nfc_uids_path=nfc_config.get("new_uids_file", "new_nfc_uid.json"),
+        on_known_nfc_shell_command=nfc_config.get("on_known_shell_command"),
+        on_unknown_nfc_shell_command=nfc_config.get("on_unknown_shell_command"),
     )
     return service
 
@@ -68,7 +73,11 @@ def main():
     log = configure_logging(config["logging"])
 
     nfc_device = configure_nfc_device(config["nfc"])
-    homekey_service = configure_homekey_service(config["homekey"], nfc_device)
+    homekey_service = configure_homekey_service(
+        config["homekey"],
+        nfc_device,
+        nfc_config=config.get("nfc", {}),
+    )
     hap_driver, _ = configure_hap_accessory(config["hap"], homekey_service)
 
     for s in (signal.SIGINT, signal.SIGTERM):

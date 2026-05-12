@@ -1,7 +1,9 @@
 import base64
+import json
 import logging
-import time
 import os
+import subprocess
+import time
 from operator import attrgetter
 
 from entity import (
@@ -46,12 +48,20 @@ class Service:
         express: bool = True,
         finish: str = "silver",
         flow: str = "fast",
-        throttle_polling = 0.1
+        throttle_polling=0.1,
+        known_nfc_uids_path: str = "known_nfc_uids.json",
+        new_nfc_uids_path: str = "new_nfc_uid.json",
+        on_known_nfc_shell_command: str = None,
+        on_unknown_nfc_shell_command: str = None,
     ) -> None:
         self.repository = repository
         self.clf = clf
         self.throttle_polling = throttle_polling
         self.express = express in (True, "True", "true", "1")
+        self.known_nfc_uids_path = known_nfc_uids_path
+        self.new_nfc_uids_path = new_nfc_uids_path
+        self.on_known_nfc_shell_command = on_known_nfc_shell_command
+        self.on_unknown_nfc_shell_command = on_unknown_nfc_shell_command
 
         try:
             self.hardware_finish_color = HardwareFinishColor[finish.upper()]
@@ -74,6 +84,114 @@ class Service:
     def on_endpoint_authenticated(self, endpoint):
         """This method will be called when an endpoint is authenticated"""
         # Currently overwritten by accessory.py
+
+    @staticmethod
+    def _normalize_uid(uid):
+        if uid is None:
+            return None
+        if isinstance(uid, bytes):
+            return uid.hex().upper()
+        uid = str(uid).strip().upper().replace(":", "").replace("-", "").replace(" ", "")
+        if uid == "":
+            return None
+        return uid
+
+    def _load_uid_list(self, path):
+        if not path:
+            return set()
+        try:
+            data = json.load(open(path, "r"))
+        except FileNotFoundError:
+            return set()
+        except Exception:
+            log.exception(f'Could not parse NFC UID file "{path}"')
+            return set()
+
+        if isinstance(data, list):
+            entries = data
+        elif isinstance(data, dict):
+            if isinstance(data.get("uids"), list):
+                entries = data.get("uids", [])
+            elif all(isinstance(k, str) for k in data.keys()):
+                entries = list(data.keys())
+            else:
+                entries = []
+        else:
+            entries = []
+
+        return {
+            uid
+            for uid in (self._normalize_uid(item) for item in entries)
+            if uid is not None
+        }
+
+    def _is_known_nfc_uid(self, uid):
+        uid = self._normalize_uid(uid)
+        if uid is None:
+            return False
+        return uid in self._load_uid_list(self.known_nfc_uids_path)
+
+    def _store_unknown_nfc_uid(self, uid):
+        uid = self._normalize_uid(uid)
+        if uid is None:
+            return
+
+        known_uids = self._load_uid_list(self.new_nfc_uids_path)
+        if uid in known_uids:
+            return
+        known_uids.add(uid)
+        json.dump(
+            {"uids": sorted(known_uids)},
+            open(self.new_nfc_uids_path, "w"),
+            indent=2,
+        )
+        log.info(f'Stored unknown NFC UID "{uid}" in {self.new_nfc_uids_path}')
+
+    def _run_shell_command(self, command, reason):
+        if command in (None, ""):
+            return
+        log.info(f'Running shell command for "{reason}" event')
+        try:
+            subprocess.Popen(
+                command,
+                shell=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except Exception:
+            log.exception(
+                f'Could not run shell command for "{reason}" event: {command}'
+            )
+
+    @staticmethod
+    def _extract_uid(remote_target=None, target=None):
+        if target is not None:
+            identifier = getattr(target, "identifier", None)
+            if identifier is not None and len(identifier):
+                return identifier.hex().upper()
+
+        if remote_target is None:
+            return None
+
+        for attribute_name in ("sdd_res", "sensf_res", "sensb_res"):
+            value = getattr(remote_target, attribute_name, None)
+            if value is not None and len(value):
+                return bytes(value).hex().upper()
+        return None
+
+    def _handle_non_homekey_tag(self, uid):
+        if uid is None:
+            log.info("Found non-homekey NFC tag but could not extract UID")
+            return
+        log.info(f"Found non-homekey NFC tag with UID: {uid}")
+        if self._is_known_nfc_uid(uid):
+            log.info(f'NFC UID "{uid}" is known')
+            self._run_shell_command(self.on_known_nfc_shell_command, "known-nfc")
+            return
+        log.info(f'NFC UID "{uid}" is unknown')
+        self._store_unknown_nfc_uid(uid)
+        self._run_shell_command(self.on_unknown_nfc_shell_command, "unknown-nfc")
 
     def start(self):
         self._runner = create_runner(
@@ -112,6 +230,9 @@ class Service:
 
         remote_target = self.clf.sense(
             RemoteTarget("106A"),
+            RemoteTarget("106B"),
+            RemoteTarget("212F"),
+            RemoteTarget("424F"),
             broadcast=ECP.home(
                 identifier=self.repository.get_reader_group_identifier(),
                 flag_2=self.express,
@@ -127,10 +248,10 @@ class Service:
         if target is None:
             return
 
+        uid = self._extract_uid(remote_target, target)
+
         if not isinstance(target, ISODEPTag):
-            log.info(
-                f"Found non-ISODEP Tag with UID: {target.identifier.hex().upper()}"
-            )
+            self._handle_non_homekey_tag(uid)
             while self.clf.sense(RemoteTarget("106A")) is not None:
                 log.info("Waiting for target to leave the field...")
                 time.sleep(0.5)
@@ -138,32 +259,45 @@ class Service:
 
         log.info(f"Got NFC tag {target}")
 
-        tag = ISO7816Tag(target)
-        try:
-            result_flow, new_issuers_state, endpoint = read_homekey(
-                tag,
-                issuers=self.repository.get_all_issuers(),
-                preferred_versions=[b"\x02\x00"],
-                flow=self.flow,
-                transaction_code=DigitalKeyTransactionType.UNLOCK,
-                reader_identifier=self.repository.get_reader_group_identifier()
-                + self.repository.get_reader_identifier(),
-                reader_private_key=self.repository.get_reader_private_key(),
-                key_size=16,
+        reader_private_key = self.repository.get_reader_private_key()
+        endpoint = None
+        if reader_private_key not in (None, b"", bytes.fromhex("00" * 32)):
+            tag = ISO7816Tag(target)
+            try:
+                result_flow, new_issuers_state, endpoint = read_homekey(
+                    tag,
+                    issuers=self.repository.get_all_issuers(),
+                    preferred_versions=[b"\x02\x00"],
+                    flow=self.flow,
+                    transaction_code=DigitalKeyTransactionType.UNLOCK,
+                    reader_identifier=self.repository.get_reader_group_identifier()
+                    + self.repository.get_reader_identifier(),
+                    reader_private_key=reader_private_key,
+                    key_size=16,
+                )
+
+                if new_issuers_state is not None and len(new_issuers_state):
+                    self.repository.upsert_issuers(new_issuers_state)
+
+                log.info(f"Authenticated endpoint via {result_flow!r}: {endpoint}")
+
+                end = time.monotonic()
+                log.info(f"Transaction took {(end - start) * 1000} ms")
+
+                if endpoint is not None:
+                    self._run_shell_command(
+                        self.on_known_nfc_shell_command, "homekey-authenticated"
+                    )
+                    self.on_endpoint_authenticated(endpoint)
+            except ProtocolError as e:
+                log.info(f'Could not authenticate device due to protocol error "{e}"')
+        else:
+            log.info(
+                "Home Key authentication is not configured yet, treating ISODEP tags as regular NFC tags"
             )
 
-            if new_issuers_state is not None and len(new_issuers_state):
-                self.repository.upsert_issuers(new_issuers_state)
-
-            log.info(f"Authenticated endpoint via {result_flow!r}: {endpoint}")
-
-            end = time.monotonic()
-            log.info(f"Transaction took {(end - start) * 1000} ms")
-
-            if endpoint is not None:
-                self.on_endpoint_authenticated(endpoint)
-        except ProtocolError as e:
-            log.info(f'Could not authenticate device due to protocol error "{e}"')
+        if endpoint is None:
+            self._handle_non_homekey_tag(uid)
 
         # Let device cool down, wait for ISODEP to drop to consider comms finished
         while target.is_present:
@@ -174,9 +308,6 @@ class Service:
         log.info("Waiting for next device...")
 
     def run(self):
-        if self.repository.get_reader_private_key() in (None, b""):
-            raise Exception("Device is not configured via HAP. NFC inactive")
-
         log.info("Connecting to the NFC reader...")
 
         self.clf.device = None

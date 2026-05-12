@@ -165,9 +165,8 @@ class Service:
                     elif isinstance(entry, dict):
                         uid = self._normalize_uid(entry.get("uid"))
                         if uid is not None:
-                            entries[uid] = (
-                                str(entry.get("name")) if entry.get("name") else None
-                            )
+                            name = entry.get("name")
+                            entries[uid] = str(name) if name else None
             for key, value in data.items():
                 if key == "uids":
                     continue
@@ -177,7 +176,8 @@ class Service:
                 if isinstance(value, str):
                     entries[uid] = value
                 elif isinstance(value, dict):
-                    entries[uid] = str(value.get("name")) if value.get("name") else None
+                    name = value.get("name")
+                    entries[uid] = str(name) if name else None
                 else:
                     entries[uid] = None
         return entries

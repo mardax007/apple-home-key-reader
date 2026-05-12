@@ -1,4 +1,2 @@
-{"at": "2026-05-12T12:57:20.802642+00:00", "event_type": "nfc_known", "source": "nfc", "uid": "ABCD", "name": null, "details": {}}
-{"at": "2026-05-12T12:57:20.802770+00:00", "event_type": "nfc_unknown", "source": "nfc", "uid": "1234", "name": null, "details": {}}
-{"at": "2026-05-12T12:57:35.494938+00:00", "event_type": "nfc_known", "source": "nfc", "uid": "ABCD", "name": null, "details": {}}
-{"at": "2026-05-12T12:57:35.495024+00:00", "event_type": "nfc_unknown", "source": "nfc", "uid": "1234", "name": null, "details": {}}
+{"at": "2026-05-12T12:58:40.539196+00:00", "event_type": "nfc_known", "source": "nfc", "uid": "ABCD", "name": null, "details": {}}
+{"at": "2026-05-12T12:58:40.539324+00:00", "event_type": "nfc_unknown", "source": "nfc", "uid": "1234", "name": null, "details": {}}

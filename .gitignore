@@ -23,6 +23,8 @@ persist.json
 accessory.state
 homekey.json
 hap.state
+new_nfc_uid.json
+access_log.jsonl
 
 # IDE's
 .idea/*
@@ -30,4 +32,3 @@ hap.state
 
 # Tox
 .tox
-

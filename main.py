@@ -62,6 +62,8 @@ def configure_homekey_service(config: dict, nfc_device, repository=None, nfc_con
         throttle_polling=float(config.get("throttle_polling") or 0.15),
         known_nfc_uids_path=nfc_config.get("known_uids_file", "known_nfc_uids.json"),
         new_nfc_uids_path=nfc_config.get("new_uids_file", "new_nfc_uid.json"),
+        access_log_path=nfc_config.get("access_log_file", "access_log.jsonl"),
+        homekey_user_names_path=config.get("user_names_file", "homekey_user_names.json"),
         on_known_nfc_shell_command=nfc_config.get("on_known_shell_command"),
         on_unknown_nfc_shell_command=nfc_config.get("on_unknown_shell_command"),
     )

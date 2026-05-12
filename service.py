@@ -1,4 +1,5 @@
 import base64
+from datetime import datetime, timezone
 import json
 import logging
 import os
@@ -54,6 +55,8 @@ class Service:
         throttle_polling=0.1,
         known_nfc_uids_path: str = "known_nfc_uids.json",
         new_nfc_uids_path: str = "new_nfc_uid.json",
+        access_log_path: str = "access_log.jsonl",
+        homekey_user_names_path: str = "homekey_user_names.json",
         on_known_nfc_shell_command: str = None,
         on_unknown_nfc_shell_command: str = None,
     ) -> None:
@@ -63,6 +66,8 @@ class Service:
         self.express = express in (True, "True", "true", "1")
         self.known_nfc_uids_path = known_nfc_uids_path
         self.new_nfc_uids_path = new_nfc_uids_path
+        self.access_log_path = access_log_path
+        self.homekey_user_names_path = homekey_user_names_path
         self.on_known_nfc_shell_command = on_known_nfc_shell_command
         self.on_unknown_nfc_shell_command = on_unknown_nfc_shell_command
 
@@ -129,11 +134,118 @@ class Service:
             if uid is not None
         }
 
-    def _is_known_nfc_uid(self, uid):
+    def _load_known_nfc_uids_with_names(self):
+        path = self.known_nfc_uids_path
+        if not path:
+            return {}
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except FileNotFoundError:
+            return {}
+        except Exception:
+            log.exception(f'Could not parse NFC UID file "{path}"')
+            return {}
+
+        entries = {}
+        if isinstance(data, list):
+            for entry in data:
+                uid = self._normalize_uid(entry)
+                if uid is not None:
+                    entries[uid] = None
+            return entries
+
+        if isinstance(data, dict):
+            if isinstance(data.get("uids"), list):
+                for entry in data.get("uids", []):
+                    if isinstance(entry, str):
+                        uid = self._normalize_uid(entry)
+                        if uid is not None:
+                            entries[uid] = None
+                    elif isinstance(entry, dict):
+                        uid = self._normalize_uid(entry.get("uid"))
+                        if uid is not None:
+                            entries[uid] = (
+                                str(entry.get("name")) if entry.get("name") else None
+                            )
+            for key, value in data.items():
+                if key == "uids":
+                    continue
+                uid = self._normalize_uid(key)
+                if uid is None:
+                    continue
+                if isinstance(value, str):
+                    entries[uid] = value
+                elif isinstance(value, dict):
+                    entries[uid] = str(value.get("name")) if value.get("name") else None
+                else:
+                    entries[uid] = None
+        return entries
+
+    def _get_known_nfc_uid_name(self, uid):
         uid = self._normalize_uid(uid)
         if uid is None:
-            return False
-        return uid in self._load_uid_list(self.known_nfc_uids_path)
+            return False, None
+        known_uids = self._load_known_nfc_uids_with_names()
+        if uid not in known_uids:
+            return False, None
+        return True, known_uids.get(uid)
+
+    @staticmethod
+    def _normalize_hex_id(value):
+        if value is None:
+            return None
+        normalized = str(value).strip().upper().replace(":", "").replace("-", "").replace(" ", "")
+        return normalized if normalized else None
+
+    def _load_homekey_user_names(self):
+        path = self.homekey_user_names_path
+        if not path:
+            return {}, {}
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except FileNotFoundError:
+            return {}, {}
+        except Exception:
+            log.exception(f'Could not parse Home Key user names file "{path}"')
+            return {}, {}
+
+        if not isinstance(data, dict):
+            return {}, {}
+
+        endpoint_ids = data.get("endpoint_ids", data)
+        public_keys = data.get("public_keys", {})
+        if not isinstance(endpoint_ids, dict):
+            endpoint_ids = {}
+        if not isinstance(public_keys, dict):
+            public_keys = {}
+
+        endpoint_names = {}
+        for key, value in endpoint_ids.items():
+            key = self._normalize_hex_id(key)
+            if key is None:
+                continue
+            endpoint_names[key] = str(value)
+
+        public_key_names = {}
+        for key, value in public_keys.items():
+            key = self._normalize_hex_id(key)
+            if key is None:
+                continue
+            public_key_names[key] = str(value)
+        return endpoint_names, public_key_names
+
+    def _get_homekey_user_name(self, endpoint):
+        endpoint_names, public_key_names = self._load_homekey_user_names()
+        endpoint_id = self._normalize_hex_id(endpoint.id.hex())
+        if endpoint_id in endpoint_names:
+            return endpoint_names.get(endpoint_id)
+
+        public_key = self._normalize_hex_id(endpoint.public_key.hex())
+        if public_key in public_key_names:
+            return public_key_names.get(public_key)
+        return None
 
     def _store_unknown_nfc_uid(self, uid):
         uid = self._normalize_uid(uid)
@@ -151,6 +263,21 @@ class Service:
                 indent=2,
             )
         log.info(f'Stored unknown NFC UID "{uid}" in {self.new_nfc_uids_path}')
+
+    def _append_access_log(self, *, event_type, source, uid=None, name=None, details=None):
+        if self.access_log_path in (None, ""):
+            return
+        uid = self._normalize_uid(uid)
+        event = {
+            "at": datetime.now(timezone.utc).isoformat(),
+            "event_type": event_type,
+            "source": source,
+            "uid": uid,
+            "name": name,
+            "details": details or {},
+        }
+        with open(self.access_log_path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(event) + "\n")
 
     def _run_shell_command(self, command, reason):
         if command in (None, ""):
@@ -191,13 +318,31 @@ class Service:
     def _handle_non_homekey_tag(self, uid):
         if uid is None:
             log.info("Found non-homekey NFC tag but could not extract UID")
+            self._append_access_log(
+                event_type="nfc_unknown",
+                source="nfc",
+                uid=uid,
+                details={"reason": "uid-unavailable"},
+            )
             return
         log.info(f"Found non-homekey NFC tag with UID: {uid}")
-        if self._is_known_nfc_uid(uid):
+        is_known, key_name = self._get_known_nfc_uid_name(uid)
+        if is_known:
             log.info(f'NFC UID "{uid}" is known')
+            self._append_access_log(
+                event_type="nfc_known",
+                source="nfc",
+                uid=uid,
+                name=key_name,
+            )
             self._run_shell_command(self.on_known_nfc_shell_command, "known-nfc")
             return
         log.info(f'NFC UID "{uid}" is unknown')
+        self._append_access_log(
+            event_type="nfc_unknown",
+            source="nfc",
+            uid=uid,
+        )
         self._store_unknown_nfc_uid(uid)
         self._run_shell_command(self.on_unknown_nfc_shell_command, "unknown-nfc")
 
@@ -304,6 +449,19 @@ class Service:
                 log.info(f"Transaction took {(end - start) * 1000} ms")
 
                 if endpoint is not None:
+                    endpoint_id = endpoint.id.hex().upper()
+                    homekey_user_name = self._get_homekey_user_name(endpoint)
+                    self._append_access_log(
+                        event_type="homekey_authenticated",
+                        source="homekey",
+                        uid=uid,
+                        name=homekey_user_name,
+                        details={
+                            "endpoint_id": endpoint_id,
+                            "endpoint_public_key": endpoint.public_key.hex().upper(),
+                            "flow": str(result_flow),
+                        },
+                    )
                     self._run_shell_command(
                         self.on_known_nfc_shell_command, "homekey-authenticated"
                     )

@@ -11,6 +11,12 @@ class FakeRepository:
     pass
 
 
+class FakeEndpoint:
+    def __init__(self, endpoint_id, public_key_hex):
+        self.id = bytes.fromhex(endpoint_id)
+        self.public_key = bytes.fromhex(public_key_hex)
+
+
 def test_load_uid_list_supports_multiple_json_shapes(tmp_path):
     list_file = tmp_path / "list.json"
     list_file.write_text(json.dumps(["AA:BB", "cc-dd", ""]))
@@ -71,3 +77,68 @@ def test_handle_non_homekey_tag_routes_known_and_unknown(tmp_path):
         ("unknown-cmd", "unknown-nfc"),
     ]
     assert json.loads(unknown_file.read_text()) == {"uids": ["1234"]}
+
+
+def test_known_uid_name_is_loaded_from_supported_shapes(tmp_path):
+    known_file = tmp_path / "known_named.json"
+    known_file.write_text(
+        json.dumps(
+            {
+                "uids": [{"uid": "AA-BB", "name": "Alice card"}],
+                "CCDD": "Guest card",
+                "EEFF": {"name": "Spare card"},
+            }
+        )
+    )
+
+    service = Service(FakeCLF(), FakeRepository(), known_nfc_uids_path=str(known_file))
+
+    assert service._get_known_nfc_uid_name("AABB") == (True, "Alice card")
+    assert service._get_known_nfc_uid_name("CC:DD") == (True, "Guest card")
+    assert service._get_known_nfc_uid_name("EE-FF") == (True, "Spare card")
+    assert service._get_known_nfc_uid_name("FFFF") == (False, None)
+
+
+def test_access_log_appends_json_lines_with_name(tmp_path):
+    access_log = tmp_path / "access.log.jsonl"
+    known_file = tmp_path / "known.json"
+    known_file.write_text(json.dumps({"ABCD": "Alice tag"}))
+
+    service = Service(
+        FakeCLF(),
+        FakeRepository(),
+        known_nfc_uids_path=str(known_file),
+        access_log_path=str(access_log),
+    )
+    service._run_shell_command = lambda *_: None
+    service._handle_non_homekey_tag("ab:cd")
+
+    log_entries = [json.loads(line) for line in access_log.read_text().splitlines()]
+    assert len(log_entries) == 1
+    assert log_entries[0]["event_type"] == "nfc_known"
+    assert log_entries[0]["uid"] == "ABCD"
+    assert log_entries[0]["name"] == "Alice tag"
+    assert log_entries[0]["source"] == "nfc"
+
+
+def test_homekey_user_name_resolution_by_endpoint_id_and_public_key(tmp_path):
+    names_file = tmp_path / "homekey_names.json"
+    names_file.write_text(
+        json.dumps(
+            {
+                "endpoint_ids": {"ABCDEF123456": "Alice"},
+                "public_keys": {"04AABBCC": "Bob"},
+            }
+        )
+    )
+    service = Service(
+        FakeCLF(),
+        FakeRepository(),
+        homekey_user_names_path=str(names_file),
+    )
+
+    endpoint_by_id = FakeEndpoint("ABCDEF123456", "04112233")
+    endpoint_by_public_key = FakeEndpoint("001122334455", "04AABBCC")
+
+    assert service._get_homekey_user_name(endpoint_by_id) == "Alice"
+    assert service._get_homekey_user_name(endpoint_by_public_key) == "Bob"

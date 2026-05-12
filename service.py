@@ -100,7 +100,8 @@ class Service:
         if not path:
             return set()
         try:
-            data = json.load(open(path, "r"))
+            with open(path, "r") as handle:
+                data = json.load(handle)
         except FileNotFoundError:
             return set()
         except Exception:
@@ -140,11 +141,12 @@ class Service:
         if uid in known_uids:
             return
         known_uids.add(uid)
-        json.dump(
-            {"uids": sorted(known_uids)},
-            open(self.new_nfc_uids_path, "w"),
-            indent=2,
-        )
+        with open(self.new_nfc_uids_path, "w") as handle:
+            json.dump(
+                {"uids": sorted(known_uids)},
+                handle,
+                indent=2,
+            )
         log.info(f'Stored unknown NFC UID "{uid}" in {self.new_nfc_uids_path}')
 
     def _run_shell_command(self, command, reason):

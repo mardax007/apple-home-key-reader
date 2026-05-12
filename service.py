@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 import os
+import shlex
 import subprocess
 import time
 from operator import attrgetter
@@ -41,6 +42,8 @@ log = logging.getLogger()
 
 
 class Service:
+    UNCONFIGURED_READER_PRIVATE_KEY = bytes.fromhex("00" * 32)
+
     def __init__(
         self,
         clf: BroadcastFrameContactlessFrontend,
@@ -154,9 +157,12 @@ class Service:
             return
         log.info(f'Running shell command for "{reason}" event')
         try:
+            command_args = command if isinstance(command, list) else shlex.split(command)
+            if len(command_args) <= 0:
+                return
             subprocess.Popen(
-                command,
-                shell=True,
+                command_args,
+                shell=False,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
@@ -254,7 +260,12 @@ class Service:
 
         if not isinstance(target, ISODEPTag):
             self._handle_non_homekey_tag(uid)
-            while self.clf.sense(RemoteTarget("106A")) is not None:
+            while self.clf.sense(
+                RemoteTarget("106A"),
+                RemoteTarget("106B"),
+                RemoteTarget("212F"),
+                RemoteTarget("424F"),
+            ) is not None:
                 log.info("Waiting for target to leave the field...")
                 time.sleep(0.5)
             return
@@ -263,7 +274,11 @@ class Service:
 
         reader_private_key = self.repository.get_reader_private_key()
         endpoint = None
-        if reader_private_key not in (None, b"", bytes.fromhex("00" * 32)):
+        if reader_private_key not in (
+            None,
+            b"",
+            Service.UNCONFIGURED_READER_PRIVATE_KEY,
+        ):
             tag = ISO7816Tag(target)
             try:
                 result_flow, new_issuers_state, endpoint = read_homekey(

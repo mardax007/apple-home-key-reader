@@ -24,6 +24,7 @@ accessory.state
 homekey.json
 hap.state
 new_nfc_uid.json
+new_nfc_uids.json
 access_log.jsonl
 
 # IDE's

@@ -125,7 +125,7 @@ Other modules:
 Two files will be created as the result of you running the application, assuming no settings were changed:
 - `hap.state`: contains pairing data needed for HAP-python;
 - `homekey.json`: contains all lock configuration data formatted in a human-readable form.
-- `new_nfc_uid.json`: contains unknown regular NFC UID values that were seen by the reader.
+- `new_nfc_uids.json`: contains unknown regular NFC UID values that were seen by the reader.
 - `access_log.jsonl`: contains access events (known/unknown regular NFC and Home Key authentication).
 
 

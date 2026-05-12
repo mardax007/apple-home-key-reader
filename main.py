@@ -61,7 +61,7 @@ def configure_homekey_service(config: dict, nfc_device, repository=None, nfc_con
         # Poll no more than ~6 times a second by default
         throttle_polling=float(config.get("throttle_polling") or 0.15),
         known_nfc_uids_path=nfc_config.get("known_uids_file", "known_nfc_uids.json"),
-        new_nfc_uids_path=nfc_config.get("new_uids_file", "new_nfc_uid.json"),
+        new_nfc_uids_path=nfc_config.get("new_uids_file", "new_nfc_uids.json"),
         access_log_path=nfc_config.get("access_log_file", "access_log.jsonl"),
         homekey_user_names_path=config.get(
             "user_names_file", "homekey_user_names.json"

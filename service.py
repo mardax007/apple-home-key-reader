@@ -54,7 +54,7 @@ class Service:
         flow: str = "fast",
         throttle_polling=0.1,
         known_nfc_uids_path: str = "known_nfc_uids.json",
-        new_nfc_uids_path: str = "new_nfc_uid.json",
+        new_nfc_uids_path: str = "new_nfc_uids.json",
         access_log_path: str = "access_log.jsonl",
         homekey_user_names_path: str = "homekey_user_names.json",
         on_known_nfc_shell_command: str = None,

@@ -7,7 +7,7 @@
         "path": "tty:usbserial-0001:pn532",
         "broadcast": true,
         "known_uids_file": "known_nfc_uids.json",
-        "new_uids_file": "new_nfc_uid.json",
+        "new_uids_file": "new_nfc_uids.json",
         "access_log_file": "access_log.jsonl",
         "on_known_shell_command": "",
         "on_unknown_shell_command": ""

@@ -274,11 +274,13 @@ class Service:
 
         reader_private_key = self.repository.get_reader_private_key()
         endpoint = None
+        attempted_homekey_auth = False
         if reader_private_key not in (
             None,
             b"",
             Service.UNCONFIGURED_READER_PRIVATE_KEY,
         ):
+            attempted_homekey_auth = True
             tag = ISO7816Tag(target)
             try:
                 result_flow, new_issuers_state, endpoint = read_homekey(
@@ -314,6 +316,10 @@ class Service:
             )
 
         if endpoint is None:
+            if attempted_homekey_auth:
+                log.info(
+                    "ISODEP tag was not authenticated as Home Key, handling it as regular NFC tag"
+                )
             self._handle_non_homekey_tag(uid)
 
         # Let device cool down, wait for ISODEP to drop to consider comms finished

@@ -158,7 +158,7 @@ class Service:
         log.info(f'Running shell command for "{reason}" event')
         try:
             command_args = command if isinstance(command, list) else shlex.split(command)
-            if len(command_args) <= 0:
+            if not command_args:
                 return
             subprocess.Popen(
                 command_args,
@@ -176,7 +176,7 @@ class Service:
     def _extract_uid(remote_target=None, target=None):
         if target is not None:
             identifier = getattr(target, "identifier", None)
-            if identifier is not None and len(identifier):
+            if identifier:
                 return identifier.hex().upper()
 
         if remote_target is None:
@@ -184,7 +184,7 @@ class Service:
 
         for attribute_name in ("sdd_res", "sensf_res", "sensb_res"):
             value = getattr(remote_target, attribute_name, None)
-            if value is not None and len(value):
+            if value:
                 return bytes(value).hex().upper()
         return None
 

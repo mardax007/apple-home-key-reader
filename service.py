@@ -416,7 +416,7 @@ class Service:
         if not self.home_assistant_shell_command_whitelist:
             return True
 
-        executable = str(command_args[0]).strip()
+        executable = command_args[0]
         for allowed in self.home_assistant_shell_command_whitelist:
             if "/" in allowed:
                 if executable == allowed:
@@ -590,7 +590,9 @@ class Service:
                 timeout=self.HTTP_SHUTDOWN_TIMEOUT
             )
             if self._home_assistant_thread.is_alive():
-                log.warning("Home Assistant API server thread did not stop cleanly")
+                log.warning(
+                    "Home Assistant API server thread did not stop within timeout; some resources may remain open"
+                )
             self._home_assistant_thread = None
 
     @staticmethod

@@ -111,7 +111,7 @@ Configuration is done via a JSON file `configuration.json`, with the following 4
       * `host`: API bind host, default `127.0.0.1`;
       * `port`: API listen port, default `9780`;
       * `token`: optional shared token (`Authorization: Bearer <token>` or `X-HA-Token`);
-      * `enable_shell_command`: allows Home Assistant to run arbitrary shell commands via `/ha/shell/run`. Set to `false` to disable this feature;
+      * `enable_shell_command`: allows Home Assistant to run shell commands via `/ha/shell/run` (subject to whitelist when configured). Set to `false` to disable this feature;
       * `shell_command_whitelist`: whitelist for `/ha/shell/run`.  
         If this list is empty, all commands are allowed (when `enable_shell_command=true`).  
         If non-empty, only commands whose executable matches a whitelist entry are allowed.

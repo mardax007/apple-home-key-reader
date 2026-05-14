@@ -64,6 +64,18 @@ Other OS + Python version combos were not verified but may still work.
     python3 main.py
     ```
 
+## Updating
+
+To update an existing checkout with one command:
+
+```
+./update.sh
+```
+
+This will:
+1. Pull latest commits using `git pull --ff-only`;
+2. Re-install runtime dependencies from `requirements.txt`.
+
 # Configuration
 
 Configuration is done via a JSON file `configuration.json`, with the following 4 blocks configurable:

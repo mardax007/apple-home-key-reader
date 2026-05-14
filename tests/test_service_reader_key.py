@@ -35,7 +35,7 @@ def test_remove_reader_key_resets_existing_instance(tmp_path):
     assert repository.get_all_issuers() == []
 
 
-def test_remove_reader_key_returns_does_not_exist_for_unknown_key(tmp_path):
+def test_remove_unknown_reader_key_returns_does_not_exist(tmp_path):
     storage_path = tmp_path / "homekey.json"
     repository = Repository(str(storage_path))
     service = Service(FakeCLF(), repository)

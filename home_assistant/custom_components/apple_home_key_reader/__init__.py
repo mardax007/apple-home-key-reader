@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_UID
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.exceptions import HomeAssistantError
 import voluptuous as vol
@@ -22,6 +21,7 @@ from .const import (
 CONF_ENTRY_ID = "entry_id"
 CONF_NAME = "name"
 CONF_COMMAND = "command"
+CONF_UID = "uid"
 
 DATA_APIS = "apis"
 DATA_REGISTERED = "registered"

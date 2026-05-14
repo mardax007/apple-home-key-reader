@@ -24,9 +24,13 @@ class AppleHomeKeyReaderConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_zeroconf(self, discovery_info) -> FlowResult:
         host = str(getattr(discovery_info, "host", "") or "")
         if not host:
+            _LOGGER.debug("Zeroconf discovery aborted: missing host in discovery_info")
             return self.async_abort(reason="cannot_connect")
         port = int(getattr(discovery_info, "port", DEFAULT_PORT) or DEFAULT_PORT)
         name = str(getattr(discovery_info, "name", "") or "Apple Home Key Reader")
+        _LOGGER.debug(
+            "Zeroconf discovery received host=%s port=%s name=%s", host, port, name
+        )
 
         await self.async_set_unique_id(f"{host}:{port}")
         self._abort_if_unique_id_configured(
@@ -48,13 +52,26 @@ class AppleHomeKeyReaderConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             host = user_input[CONF_HOST]
             port = int(user_input[CONF_PORT])
+            base_path = str(user_input.get(CONF_BASE_PATH, "/ha") or "/ha")
             await self.async_set_unique_id(f"{host}:{port}")
             self._abort_if_unique_id_configured(
                 updates={CONF_HOST: host, CONF_PORT: port}
             )
+            _LOGGER.debug(
+                "Validating connection to host=%s port=%s base_path=%s token_set=%s",
+                host,
+                port,
+                base_path,
+                bool(user_input.get(CONF_TOKEN)),
+            )
             api = AppleHomeKeyReaderApi(self.hass, user_input)
             try:
                 if not await api.health():
+                    _LOGGER.debug(
+                        "Health endpoint returned a non-ok payload for host=%s port=%s",
+                        host,
+                        port,
+                    )
                     errors["base"] = "cannot_connect"
                 else:
                     return self.async_create_entry(
@@ -62,7 +79,12 @@ class AppleHomeKeyReaderConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         data=user_input,
                     )
             except AppleHomeKeyReaderError as exc:
-                _LOGGER.debug("Connection validation failed: %s", exc)
+                _LOGGER.debug(
+                    "Connection validation failed for host=%s port=%s: %s",
+                    host,
+                    port,
+                    exc,
+                )
                 errors["base"] = "cannot_connect"
 
         schema = vol.Schema(

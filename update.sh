@@ -13,6 +13,6 @@ echo "Updating git repository..."
 git pull --ff-only
 
 echo "Updating Python dependencies..."
-python3 -m pip install -r requirements.txt
+python3 -m pip install --upgrade -r requirements.txt
 
 echo "Update complete."

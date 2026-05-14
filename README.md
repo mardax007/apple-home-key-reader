@@ -134,11 +134,15 @@ Configuration is done via a JSON file `configuration.json`, with the following 4
 When `homekey.home_assistant.enabled=true`, the app exposes an HTTP API and publishes an mDNS service (`_apple-home-key-reader._tcp.local`) for discovery.
 
 For "integration popup" onboarding in Home Assistant:
-1. Copy this folder into your Home Assistant config:
-   - `home_assistant/custom_components/apple_home_key_reader`
-2. Restart Home Assistant.
-3. Power up the Raspberry Pi on the same LAN.
-4. Home Assistant should discover it and show **Apple Home Key Reader** in Integrations.
+1. Install via HACS:
+   - HACS -> Integrations -> 3-dot menu -> Custom repositories
+   - Add `https://github.com/mardax007/apple-home-key-reader` as an **Integration**
+   - Install **Apple Home Key Reader** from HACS and restart Home Assistant
+2. Or manually copy this folder into your Home Assistant config:
+   - `custom_components/apple_home_key_reader`
+3. Restart Home Assistant.
+4. Power up the Raspberry Pi on the same LAN.
+5. Home Assistant should discover it and show **Apple Home Key Reader** in Integrations.
 
 After setup, use Home Assistant services from this integration:
 * `apple_home_key_reader.run_known_shell_command`

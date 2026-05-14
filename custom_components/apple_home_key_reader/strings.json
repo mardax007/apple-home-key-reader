@@ -1,0 +1,20 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect Apple Home Key Reader",
+        "description": "Connect Home Assistant to your Apple Home Key Reader on the local network.",
+        "data": {
+          "name": "Name",
+          "host": "Host",
+          "port": "Port",
+          "token": "Token",
+          "base_path": "Base API path"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to the Apple Home Key Reader API."
+    }
+  }
+}

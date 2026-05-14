@@ -610,7 +610,7 @@ class Service:
                                 ),
                             },
                         )
-                    if not service._is_remote_shell_command_allowed(command_args):
+                    if not service._is_remote_shell_command_allowed(command):
                         return service._write_home_assistant_response(
                             self, 403, {"ok": False, "error": "command-not-allowed"}
                         )

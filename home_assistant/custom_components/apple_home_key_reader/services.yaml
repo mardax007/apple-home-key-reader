@@ -1,6 +1,6 @@
 run_known_shell_command:
   name: Run known shell command
-  description: Run the configured on_known_shell_command on the Raspberry Pi and return stdout/stderr/exit code.
+  description: Run the configured on_known_shell_command on the Raspberry Pi. When called with a response variable, returns ok/command/returncode/stdout/stderr.
   fields:
     entry_id:
       name: Entry ID
@@ -74,7 +74,7 @@ remove_unknown_uid:
 
 run_shell_command:
   name: Run shell command
-  description: Run a shell command on the Raspberry Pi and return stdout/stderr/exit code.
+  description: Run a shell command on the Raspberry Pi. When called with a response variable, returns ok/command/returncode/stdout/stderr.
   fields:
     command:
       required: true

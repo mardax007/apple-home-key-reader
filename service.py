@@ -1,5 +1,6 @@
 import base64
 from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import logging
 import os
@@ -7,6 +8,7 @@ import shlex
 import subprocess
 import time
 from operator import attrgetter
+from threading import Lock, Thread
 
 from entity import (
     Issuer,
@@ -59,6 +61,12 @@ class Service:
         homekey_user_names_path: str = "homekey_user_names.json",
         on_known_nfc_shell_command: str = None,
         on_unknown_nfc_shell_command: str = None,
+        home_assistant_enabled: bool = False,
+        home_assistant_host: str = "0.0.0.0",
+        home_assistant_port: int = 9780,
+        home_assistant_token: str = None,
+        home_assistant_enable_shell_command: bool = False,
+        home_assistant_shell_command_whitelist=None,
     ) -> None:
         self.repository = repository
         self.clf = clf
@@ -70,6 +78,17 @@ class Service:
         self.homekey_user_names_path = homekey_user_names_path
         self.on_known_nfc_shell_command = on_known_nfc_shell_command
         self.on_unknown_nfc_shell_command = on_unknown_nfc_shell_command
+        self.home_assistant_enabled = home_assistant_enabled in (True, "True", "true", "1")
+        self.home_assistant_host = home_assistant_host
+        self.home_assistant_port = int(home_assistant_port)
+        self.home_assistant_token = home_assistant_token
+        self.home_assistant_enable_shell_command = (
+            home_assistant_enable_shell_command in (True, "True", "true", "1")
+        )
+        whitelist = home_assistant_shell_command_whitelist or []
+        self.home_assistant_shell_command_whitelist = [
+            str(item).strip() for item in whitelist if str(item).strip()
+        ]
 
         try:
             self.hardware_finish_color = HardwareFinishColor[finish.upper()]
@@ -88,6 +107,9 @@ class Service:
 
         self._run_flag = True
         self._runner = None
+        self._home_assistant_httpd = None
+        self._home_assistant_thread = None
+        self._nfc_uids_lock = Lock()
 
     def on_endpoint_authenticated(self, endpoint):
         """This method will be called when an endpoint is authenticated"""
@@ -252,17 +274,81 @@ class Service:
         if uid is None:
             return
 
-        known_uids = self._load_uid_list(self.new_nfc_uids_path)
-        if uid in known_uids:
-            return
-        known_uids.add(uid)
-        with open(self.new_nfc_uids_path, "w", encoding="utf-8") as handle:
-            json.dump(
-                {"uids": sorted(known_uids)},
-                handle,
-                indent=2,
-            )
-        log.info(f'Stored unknown NFC UID "{uid}" in {self.new_nfc_uids_path}')
+        with self._nfc_uids_lock:
+            known_uids = self._load_uid_list(self.new_nfc_uids_path)
+            if uid in known_uids:
+                return
+            known_uids.add(uid)
+            with open(self.new_nfc_uids_path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {"uids": sorted(known_uids)},
+                    handle,
+                    indent=2,
+                )
+            log.info(f'Stored unknown NFC UID "{uid}" in {self.new_nfc_uids_path}')
+
+    def add_known_nfc_uid(self, uid, name=None):
+        uid = self._normalize_uid(uid)
+        if uid is None:
+            return False
+        with self._nfc_uids_lock:
+            entries = self._load_known_nfc_uids_with_names()
+            next_name = str(name) if name not in (None, "") else None
+            changed = uid not in entries or entries.get(uid) != next_name
+            entries[uid] = next_name
+            self._save_known_nfc_uids_with_names(entries)
+        return changed
+
+    def remove_known_nfc_uid(self, uid):
+        uid = self._normalize_uid(uid)
+        if uid is None:
+            return False
+        with self._nfc_uids_lock:
+            entries = self._load_known_nfc_uids_with_names()
+            if uid not in entries:
+                return False
+            del entries[uid]
+            self._save_known_nfc_uids_with_names(entries)
+        return True
+
+    def add_unknown_nfc_uid(self, uid):
+        uid = self._normalize_uid(uid)
+        if uid is None:
+            return False
+        with self._nfc_uids_lock:
+            known_uids = self._load_uid_list(self.new_nfc_uids_path)
+            if uid in known_uids:
+                return False
+            known_uids.add(uid)
+            self._save_uid_list(self.new_nfc_uids_path, known_uids)
+        return True
+
+    def remove_unknown_nfc_uid(self, uid):
+        uid = self._normalize_uid(uid)
+        if uid is None:
+            return False
+        with self._nfc_uids_lock:
+            known_uids = self._load_uid_list(self.new_nfc_uids_path)
+            if uid not in known_uids:
+                return False
+            known_uids.remove(uid)
+            self._save_uid_list(self.new_nfc_uids_path, known_uids)
+        return True
+
+    @staticmethod
+    def _save_uid_list(path, values):
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"uids": sorted(values)}, handle, indent=2)
+
+    def _save_known_nfc_uids_with_names(self, entries):
+        payload = {
+            "uids": [
+                {"uid": uid, "name": name} if name not in (None, "") else uid
+                for uid, name in sorted(entries.items())
+            ]
+        }
+        with open(self.known_nfc_uids_path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2)
 
     def _append_access_log(self, *, event_type, source, uid=None, name=None, details=None):
         if self.access_log_path in (None, ""):
@@ -281,12 +367,12 @@ class Service:
 
     def _run_shell_command(self, command, reason):
         if command in (None, ""):
-            return
+            return False
         log.info(f'Running shell command for "{reason}" event')
         try:
             command_args = command if isinstance(command, list) else shlex.split(command)
             if not command_args:
-                return
+                return False
             subprocess.Popen(
                 command_args,
                 shell=False,
@@ -294,10 +380,174 @@ class Service:
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
+            return True
         except Exception:
             log.exception(
                 f'Could not run shell command for "{reason}" event: {command}'
             )
+            return False
+
+    def _is_remote_shell_command_allowed(self, command):
+        if command in (None, ""):
+            return False
+        if not self.home_assistant_enable_shell_command:
+            return False
+        if not self.home_assistant_shell_command_whitelist:
+            return True
+
+        try:
+            command_args = command if isinstance(command, list) else shlex.split(command)
+        except ValueError:
+            return False
+        if not command_args:
+            return False
+
+        executable = str(command_args[0]).strip()
+        executable_name = os.path.basename(executable)
+        whitelist = set(self.home_assistant_shell_command_whitelist)
+        return executable in whitelist or executable_name in whitelist
+
+    @staticmethod
+    def _read_json_body(request):
+        try:
+            length = int(request.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        raw = request.rfile.read(length) if length > 0 else b""
+        if not raw:
+            return {}
+        try:
+            return json.loads(raw.decode("utf-8"))
+        except Exception:
+            return None
+
+    def _is_home_assistant_request_authorized(self, headers):
+        token = self.home_assistant_token
+        if token in (None, ""):
+            return True
+        auth_header = headers.get("Authorization", "")
+        if auth_header == f"Bearer {token}":
+            return True
+        return headers.get("X-HA-Token") == token
+
+    @staticmethod
+    def _write_home_assistant_response(request, code, payload):
+        body = json.dumps(payload).encode("utf-8")
+        request.send_response(code)
+        request.send_header("Content-Type", "application/json")
+        request.send_header("Content-Length", str(len(body)))
+        request.end_headers()
+        request.wfile.write(body)
+
+    def _build_home_assistant_handler(self):
+        service = self
+
+        class HomeAssistantHandler(BaseHTTPRequestHandler):
+            def log_message(self, format, *args):
+                log.debug(f"home-assistant-api {format % args}")
+
+            def do_GET(self):
+                if not service._is_home_assistant_request_authorized(self.headers):
+                    return service._write_home_assistant_response(
+                        self, 401, {"ok": False, "error": "unauthorized"}
+                    )
+                if self.path != "/ha/health":
+                    return service._write_home_assistant_response(
+                        self, 404, {"ok": False, "error": "not-found"}
+                    )
+                return service._write_home_assistant_response(self, 200, {"ok": True})
+
+            def do_POST(self):
+                if not service._is_home_assistant_request_authorized(self.headers):
+                    return service._write_home_assistant_response(
+                        self, 401, {"ok": False, "error": "unauthorized"}
+                    )
+                payload = service._read_json_body(self)
+                if payload is None:
+                    return service._write_home_assistant_response(
+                        self, 400, {"ok": False, "error": "invalid-json"}
+                    )
+                path = self.path
+                if path == "/ha/run-known-shell-command":
+                    ran = service._run_shell_command(
+                        service.on_known_nfc_shell_command, "home-assistant-known-shell"
+                    )
+                    return service._write_home_assistant_response(self, 200, {"ok": ran})
+                if path == "/ha/nfc/known/add":
+                    changed = service.add_known_nfc_uid(
+                        payload.get("uid"), payload.get("name")
+                    )
+                    return service._write_home_assistant_response(
+                        self, 200, {"ok": True, "changed": changed}
+                    )
+                if path == "/ha/nfc/known/remove":
+                    changed = service.remove_known_nfc_uid(payload.get("uid"))
+                    return service._write_home_assistant_response(
+                        self, 200, {"ok": True, "changed": changed}
+                    )
+                if path == "/ha/nfc/unknown/add":
+                    changed = service.add_unknown_nfc_uid(payload.get("uid"))
+                    return service._write_home_assistant_response(
+                        self, 200, {"ok": True, "changed": changed}
+                    )
+                if path == "/ha/nfc/unknown/remove":
+                    changed = service.remove_unknown_nfc_uid(payload.get("uid"))
+                    return service._write_home_assistant_response(
+                        self, 200, {"ok": True, "changed": changed}
+                    )
+                if path == "/ha/shell/run":
+                    command = payload.get("command")
+                    if not service.home_assistant_enable_shell_command:
+                        return service._write_home_assistant_response(
+                            self,
+                            403,
+                            {"ok": False, "error": "remote-shell-command-disabled"},
+                        )
+                    if not service._is_remote_shell_command_allowed(command):
+                        return service._write_home_assistant_response(
+                            self, 403, {"ok": False, "error": "command-not-allowed"}
+                        )
+                    ran = service._run_shell_command(
+                        command, "home-assistant-remote-shell"
+                    )
+                    return service._write_home_assistant_response(
+                        self, 200, {"ok": ran}
+                    )
+                return service._write_home_assistant_response(
+                    self, 404, {"ok": False, "error": "not-found"}
+                )
+
+        return HomeAssistantHandler
+
+    def _start_home_assistant_api(self):
+        if not self.home_assistant_enabled:
+            return
+        try:
+            handler_cls = self._build_home_assistant_handler()
+            self._home_assistant_httpd = ThreadingHTTPServer(
+                (self.home_assistant_host, self.home_assistant_port), handler_cls
+            )
+            self._home_assistant_thread = Thread(
+                target=self._home_assistant_httpd.serve_forever,
+                kwargs={"poll_interval": 0.5},
+                daemon=True,
+            )
+            self._home_assistant_thread.start()
+            log.info(
+                "Started Home Assistant API server at "
+                f"http://{self.home_assistant_host}:{self.home_assistant_port}"
+            )
+        except Exception:
+            log.exception("Could not start Home Assistant API server")
+
+    def _stop_home_assistant_api(self):
+        if self._home_assistant_httpd is not None:
+            self._home_assistant_httpd.shutdown()
+            self._home_assistant_httpd.server_close()
+            self._home_assistant_httpd = None
+        if self._home_assistant_thread is not None:
+            self._home_assistant_thread.join(timeout=2)
+            self._home_assistant_thread = None
 
     @staticmethod
     def _extract_uid(remote_target=None, target=None):
@@ -347,6 +597,7 @@ class Service:
         self._run_shell_command(self.on_unknown_nfc_shell_command, "unknown-nfc")
 
     def start(self):
+        self._start_home_assistant_api()
         self._runner = create_runner(
             name="homekey",
             target=self.run,
@@ -358,6 +609,7 @@ class Service:
 
     def stop(self):
         self._run_flag = False
+        self._stop_home_assistant_api()
         if self._runner is not None:
             self._runner.join()
 

@@ -52,6 +52,7 @@ def configure_nfc_device(config: dict):
 
 def configure_homekey_service(config: dict, nfc_device, repository=None, nfc_config=None):
     nfc_config = nfc_config or {}
+    home_assistant_config = config.get("home_assistant", {})
     service = Service(
         nfc_device,
         repository=repository or Repository(config["persist"]),
@@ -68,6 +69,16 @@ def configure_homekey_service(config: dict, nfc_device, repository=None, nfc_con
         ),
         on_known_nfc_shell_command=nfc_config.get("on_known_shell_command"),
         on_unknown_nfc_shell_command=nfc_config.get("on_unknown_shell_command"),
+        home_assistant_enabled=home_assistant_config.get("enabled", False),
+        home_assistant_host=home_assistant_config.get("host", "0.0.0.0"),
+        home_assistant_port=home_assistant_config.get("port", 9780),
+        home_assistant_token=home_assistant_config.get("token"),
+        home_assistant_enable_shell_command=home_assistant_config.get(
+            "enable_shell_command", False
+        ),
+        home_assistant_shell_command_whitelist=home_assistant_config.get(
+            "shell_command_whitelist", []
+        ),
     )
     return service
 

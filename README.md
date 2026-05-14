@@ -106,6 +106,27 @@ Configuration is done via a JSON file `configuration.json`, with the following 4
       * `{"endpoint_ids": {"ABCDEF123456": "Alice"}}`
       * `{"public_keys": {"04ABCD...": "Alice iPhone"}}`
       * `{"ABCDEF123456": "Alice"}` (interpreted as endpoint id mapping).
+    * `home_assistant`: optional HTTP API server for Home Assistant integration:
+      * `enabled`: enables API server if true;
+      * `host`: API bind host, default `0.0.0.0`;
+      * `port`: API listen port, default `9780`;
+      * `token`: optional shared token (`Authorization: Bearer <token>` or `X-HA-Token`);
+      * `enable_shell_command`: allows Home Assistant to run arbitrary shell commands via `/ha/shell/run`. Set to `false` to disable this feature;
+      * `shell_command_whitelist`: whitelist for `/ha/shell/run`.  
+        If this list is empty, all commands are allowed (when `enable_shell_command=true`).  
+        If non-empty, only commands whose executable matches a whitelist entry are allowed.
+
+# Home Assistant integration
+
+When `homekey.home_assistant.enabled=true`, the app exposes an HTTP API:
+
+* `GET /ha/health`
+* `POST /ha/run-known-shell-command` - runs `nfc.on_known_shell_command`
+* `POST /ha/nfc/known/add` with body `{"uid":"AABB","name":"Alice tag"}`
+* `POST /ha/nfc/known/remove` with body `{"uid":"AABB"}`
+* `POST /ha/nfc/unknown/add` with body `{"uid":"AABB"}`
+* `POST /ha/nfc/unknown/remove` with body `{"uid":"AABB"}`
+* `POST /ha/shell/run` with body `{"command":"echo hello"}` (controlled by `enable_shell_command` and `shell_command_whitelist`)
 
 
 # Project structure

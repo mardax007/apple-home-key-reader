@@ -24,6 +24,14 @@
         "express": true,
         "finish": "silver",
         "flow": "fast",
-        "user_names_file": "homekey_user_names.json"
+        "user_names_file": "homekey_user_names.json",
+        "home_assistant": {
+            "enabled": false,
+            "host": "0.0.0.0",
+            "port": 9780,
+            "token": "",
+            "enable_shell_command": false,
+            "shell_command_whitelist": []
+        }
     }
 }

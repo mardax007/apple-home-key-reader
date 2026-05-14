@@ -79,6 +79,16 @@ Configuration is done via a JSON file `configuration.json`, with the following 4
     | ACR122U      | `usb:072f:2200`            | Path specifies vendorId and productId    |
 
   * `broadcast`: configures if to use broadcast frames and ECP. If this parameter is true but used NFC device is not based on PN532, will cause an exception to be raised, set to false only if such problems occur;
+  * `known_uids_file`: json file containing known regular NFC UID values. Supported shapes are:
+    * `["UID1", "UID2"]`
+    * `{"uids": ["UID1", "UID2"]}`
+    * `{"uids": [{"uid": "UID1", "name": "Alice iPhone"}]}`
+    * `{"UID1": {}, "UID2": {}}`
+    * `{"UID1": "Alice iPhone", "UID2": {"name": "Guest tag"}}`
+  * `new_uids_file`: json file where newly seen unknown regular NFC UID values are saved in `{"uids": [...]}` format;
+  * `access_log_file`: jsonl file where every known/unknown NFC read and Home Key authentication event is appended;
+  * `on_known_shell_command`: shell command to run when a home key is authenticated or when a known regular NFC UID is read;
+  * `on_unknown_shell_command`: shell command to run when an unknown regular NFC UID is read (after storing it in `new_uids_file`);
 * `hap`: configuration of the HAP-python library, better left unchanged;
     * `port`: network port of the virtual accessory;
     * `persist`: file to store HAP-python pairing data in.
@@ -92,6 +102,10 @@ Configuration is done via a JSON file `configuration.json`, with the following 4
        Possible values: `black` `tan` `gold` `silver`;
     * `flow`: minimum viable digital key transaction flow to do. By default, reader attempts to do as least actions as possible, with fallback to next level of authentication only happening if the previous one failed. Setting this setting to `standard` or `attestation` will force protocol to fall back to those flows even if they're not required for successful auth.  
     Possible values: `fast` `standard` `attestation`.
+    * `user_names_file`: optional json file for naming Home Key users in access logs. Supported shapes:
+      * `{"endpoint_ids": {"ABCDEF123456": "Alice"}}`
+      * `{"public_keys": {"04ABCD...": "Alice iPhone"}}`
+      * `{"ABCDEF123456": "Alice"}` (interpreted as endpoint id mapping).
 
 
 # Project structure
@@ -111,6 +125,8 @@ Other modules:
 Two files will be created as the result of you running the application, assuming no settings were changed:
 - `hap.state`: contains pairing data needed for HAP-python;
 - `homekey.json`: contains all lock configuration data formatted in a human-readable form.
+- `new_nfc_uids.json`: contains unknown regular NFC UID values that were seen by the reader.
+- `access_log.jsonl`: contains access events (known/unknown regular NFC and Home Key authentication).
 
 
 # Terminology

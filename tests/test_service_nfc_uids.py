@@ -179,7 +179,7 @@ def test_remote_shell_command_policy_enable_disable_and_whitelist():
         home_assistant_enable_shell_command=False,
         home_assistant_shell_command_whitelist=[],
     )
-    assert service_disabled._is_remote_shell_command_allowed("echo hello") is False
+    assert service_disabled._is_remote_shell_command_allowed(["echo", "hello"]) is False
 
     service_allow_all = Service(
         FakeCLF(),
@@ -187,7 +187,7 @@ def test_remote_shell_command_policy_enable_disable_and_whitelist():
         home_assistant_enable_shell_command=True,
         home_assistant_shell_command_whitelist=[],
     )
-    assert service_allow_all._is_remote_shell_command_allowed("echo hello") is True
+    assert service_allow_all._is_remote_shell_command_allowed(["echo", "hello"]) is True
     assert service_allow_all._is_remote_shell_command_allowed(["/bin/date"]) is True
 
     service_whitelist = Service(
@@ -196,8 +196,8 @@ def test_remote_shell_command_policy_enable_disable_and_whitelist():
         home_assistant_enable_shell_command=True,
         home_assistant_shell_command_whitelist=["echo", "/usr/bin/python3"],
     )
-    assert service_whitelist._is_remote_shell_command_allowed("echo hello") is True
+    assert service_whitelist._is_remote_shell_command_allowed(["echo", "hello"]) is True
     assert service_whitelist._is_remote_shell_command_allowed(
-        "/usr/bin/python3 --version"
-    )
-    assert service_whitelist._is_remote_shell_command_allowed("date") is False
+        ["/usr/bin/python3", "--version"]
+    ) is True
+    assert service_whitelist._is_remote_shell_command_allowed(["date"]) is False

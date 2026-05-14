@@ -126,7 +126,7 @@ When `homekey.home_assistant.enabled=true`, the app exposes an HTTP API:
 * `POST /ha/nfc/known/remove` with body `{"uid":"AABB"}`
 * `POST /ha/nfc/unknown/add` with body `{"uid":"AABB"}`
 * `POST /ha/nfc/unknown/remove` with body `{"uid":"AABB"}`
-* `POST /ha/shell/run` with body `{"command":"echo hello"}` (controlled by `enable_shell_command` and `shell_command_whitelist`)
+* `POST /ha/shell/run` with body `{"command":["echo","hello"]}` (controlled by `enable_shell_command` and `shell_command_whitelist`)
 
 
 # Project structure

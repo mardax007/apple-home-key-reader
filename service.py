@@ -47,6 +47,14 @@ log = logging.getLogger()
 class Service:
     UNCONFIGURED_READER_PRIVATE_KEY = bytes.fromhex("00" * 32)
 
+    @staticmethod
+    def _parse_bool(value):
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return False
+        return str(value).strip().lower() in ("1", "true", "yes", "on")
+
     def __init__(
         self,
         clf: BroadcastFrameContactlessFrontend,
@@ -71,19 +79,19 @@ class Service:
         self.repository = repository
         self.clf = clf
         self.throttle_polling = throttle_polling
-        self.express = express in (True, "True", "true", "1")
+        self.express = self._parse_bool(express)
         self.known_nfc_uids_path = known_nfc_uids_path
         self.new_nfc_uids_path = new_nfc_uids_path
         self.access_log_path = access_log_path
         self.homekey_user_names_path = homekey_user_names_path
         self.on_known_nfc_shell_command = on_known_nfc_shell_command
         self.on_unknown_nfc_shell_command = on_unknown_nfc_shell_command
-        self.home_assistant_enabled = home_assistant_enabled in (True, "True", "true", "1")
+        self.home_assistant_enabled = self._parse_bool(home_assistant_enabled)
         self.home_assistant_host = home_assistant_host
         self.home_assistant_port = int(home_assistant_port)
         self.home_assistant_token = home_assistant_token
-        self.home_assistant_enable_shell_command = (
-            home_assistant_enable_shell_command in (True, "True", "true", "1")
+        self.home_assistant_enable_shell_command = self._parse_bool(
+            home_assistant_enable_shell_command
         )
         whitelist = home_assistant_shell_command_whitelist or []
         self.home_assistant_shell_command_whitelist = [
@@ -293,7 +301,7 @@ class Service:
             return False
         with self._nfc_uids_lock:
             entries = self._load_known_nfc_uids_with_names()
-            next_name = str(name) if name not in (None, "") else None
+            next_name = None if name is None else str(name).strip() or None
             changed = uid not in entries or entries.get(uid) != next_name
             entries[uid] = next_name
             self._save_known_nfc_uids_with_names(entries)
@@ -388,19 +396,17 @@ class Service:
             return False
 
     def _is_remote_shell_command_allowed(self, command):
-        if command in (None, ""):
+        if command is None:
             return False
         if not self.home_assistant_enable_shell_command:
             return False
-        if not self.home_assistant_shell_command_whitelist:
-            return True
-
-        try:
-            command_args = command if isinstance(command, list) else shlex.split(command)
-        except ValueError:
+        if not isinstance(command, list):
             return False
+        command_args = [str(item).strip() for item in command if str(item).strip()]
         if not command_args:
             return False
+        if not self.home_assistant_shell_command_whitelist:
+            return True
 
         executable = str(command_args[0]).strip()
         executable_name = os.path.basename(executable)
@@ -502,6 +508,16 @@ class Service:
                             self,
                             403,
                             {"ok": False, "error": "remote-shell-command-disabled"},
+                        )
+                    if not isinstance(command, list):
+                        return service._write_home_assistant_response(
+                            self,
+                            400,
+                            {
+                                "ok": False,
+                                "error": "invalid-command",
+                                "details": "command must be a JSON array of arguments",
+                            },
                         )
                     if not service._is_remote_shell_command_allowed(command):
                         return service._write_home_assistant_response(

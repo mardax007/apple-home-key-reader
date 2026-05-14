@@ -36,12 +36,17 @@ class AppleHomeKeyReaderApi:
         url = f"{self.base_url}{path}"
         session = async_get_clientsession(self._hass)
         _LOGGER.debug(
-            "API request starting method=%s path=%s host=%s port=%s payload_keys=%s",
+            (
+                "API request starting method=%s url=%s host=%s port=%s "
+                "token_set=%s payload_keys=%s timeout_seconds=%s"
+            ),
             method,
-            path,
+            url,
             self._host,
             self._port,
+            bool(self._token),
             sorted(payload.keys()) if isinstance(payload, dict) else None,
+            DEFAULT_TIMEOUT_SECONDS,
         )
         try:
             async with async_timeout.timeout(DEFAULT_TIMEOUT_SECONDS):
@@ -79,9 +84,9 @@ class AppleHomeKeyReaderApi:
                     return data if isinstance(data, dict) else {"ok": False}
         except (ClientError, TimeoutError) as exc:
             _LOGGER.debug(
-                "API request exception method=%s path=%s host=%s port=%s error=%s",
+                "API request exception method=%s url=%s host=%s port=%s error=%s",
                 method,
-                path,
+                url,
                 self._host,
                 self._port,
                 exc,
@@ -90,7 +95,16 @@ class AppleHomeKeyReaderApi:
 
     async def health(self) -> bool:
         data = await self.request("GET", f"{self._base_path}/health")
-        return bool(data.get("ok"))
+        ok = bool(data.get("ok"))
+        _LOGGER.debug(
+            "Health check result host=%s port=%s base_path=%s ok=%s payload=%s",
+            self._host,
+            self._port,
+            self._base_path,
+            ok,
+            data,
+        )
+        return ok
 
     async def run_known_shell_command(self) -> dict:
         return await self.request("POST", f"{self._base_path}/run-known-shell-command")

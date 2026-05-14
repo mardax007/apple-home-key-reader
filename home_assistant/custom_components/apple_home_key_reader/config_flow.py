@@ -53,24 +53,36 @@ class AppleHomeKeyReaderConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             host = user_input[CONF_HOST]
             port = int(user_input[CONF_PORT])
             base_path = str(user_input.get(CONF_BASE_PATH, "/ha") or "/ha")
+            normalized_base_path = (
+                base_path if base_path.startswith("/") else f"/{base_path}"
+            )
+            health_url = f"http://{host}:{port}{normalized_base_path}/health"
             await self.async_set_unique_id(f"{host}:{port}")
             self._abort_if_unique_id_configured(
                 updates={CONF_HOST: host, CONF_PORT: port}
             )
             _LOGGER.debug(
-                "Validating connection to host=%s port=%s base_path=%s token_set=%s",
+                (
+                    "Validating connection to host=%s port=%s base_path=%s "
+                    "health_url=%s token_set=%s"
+                ),
                 host,
                 port,
                 base_path,
+                health_url,
                 bool(user_input.get(CONF_TOKEN)),
             )
             api = AppleHomeKeyReaderApi(self.hass, user_input)
             try:
                 if not await api.health():
                     _LOGGER.debug(
-                        "Health endpoint returned a non-ok payload for host=%s port=%s",
+                        (
+                            "Health endpoint returned a non-ok payload for "
+                            "host=%s port=%s health_url=%s"
+                        ),
                         host,
                         port,
+                        health_url,
                     )
                     errors["base"] = "cannot_connect"
                 else:
@@ -80,10 +92,15 @@ class AppleHomeKeyReaderConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     )
             except AppleHomeKeyReaderError as exc:
                 _LOGGER.debug(
-                    "Connection validation failed for host=%s port=%s: %s",
+                    (
+                        "Connection validation failed for host=%s port=%s "
+                        "health_url=%s error=%s"
+                    ),
                     host,
                     port,
+                    health_url,
                     exc,
+                    exc_info=True,
                 )
                 errors["base"] = "cannot_connect"
 

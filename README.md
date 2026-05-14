@@ -108,7 +108,7 @@ Configuration is done via a JSON file `configuration.json`, with the following 4
       * `{"ABCDEF123456": "Alice"}` (interpreted as endpoint id mapping).
     * `home_assistant`: optional HTTP API server for Home Assistant integration:
       * `enabled`: enables API server if true;
-      * `host`: API bind host, default `0.0.0.0`;
+      * `host`: API bind host, default `127.0.0.1`;
       * `port`: API listen port, default `9780`;
       * `token`: optional shared token (`Authorization: Bearer <token>` or `X-HA-Token`);
       * `enable_shell_command`: allows Home Assistant to run arbitrary shell commands via `/ha/shell/run`. Set to `false` to disable this feature;

@@ -172,7 +172,7 @@ def test_add_and_remove_unknown_uid_via_management_helpers(tmp_path):
     assert content == {"uids": ["CCDD"]}
 
 
-def test_remote_shell_command_policy_enable_disable_and_whitelist():
+def test_remote_shell_command_disabled():
     service_disabled = Service(
         FakeCLF(),
         FakeRepository(),
@@ -181,6 +181,8 @@ def test_remote_shell_command_policy_enable_disable_and_whitelist():
     )
     assert service_disabled._is_remote_shell_command_allowed(["echo", "hello"]) is False
 
+
+def test_remote_shell_command_allow_all():
     service_allow_all = Service(
         FakeCLF(),
         FakeRepository(),
@@ -190,6 +192,8 @@ def test_remote_shell_command_policy_enable_disable_and_whitelist():
     assert service_allow_all._is_remote_shell_command_allowed(["echo", "hello"]) is True
     assert service_allow_all._is_remote_shell_command_allowed(["/bin/date"]) is True
 
+
+def test_remote_shell_command_whitelist():
     service_whitelist = Service(
         FakeCLF(),
         FakeRepository(),

@@ -46,7 +46,7 @@ log = logging.getLogger()
 
 class Service:
     UNCONFIGURED_READER_PRIVATE_KEY = bytes.fromhex("00" * 32)
-    HTTP_SERVER_SHUTDOWN_TIMEOUT_SECONDS = 2
+    HTTP_SHUTDOWN_TIMEOUT = 2
 
     @staticmethod
     def _parse_bool(value):
@@ -71,7 +71,7 @@ class Service:
         on_known_nfc_shell_command: str = None,
         on_unknown_nfc_shell_command: str = None,
         home_assistant_enabled: bool = False,
-        home_assistant_host: str = "0.0.0.0",
+        home_assistant_host: str = "127.0.0.1",
         home_assistant_port: int = 9780,
         home_assistant_token: str = None,
         home_assistant_enable_shell_command: bool = False,
@@ -302,7 +302,11 @@ class Service:
             return False
         with self._nfc_uids_lock:
             entries = self._load_known_nfc_uids_with_names()
-            next_name = None if name is None else str(name).strip() or None
+            if name is None:
+                next_name = None
+            else:
+                stripped_name = str(name).strip()
+                next_name = stripped_name if stripped_name else None
             changed = uid not in entries or entries.get(uid) != next_name
             entries[uid] = next_name
             self._save_known_nfc_uids_with_names(entries)
@@ -352,7 +356,9 @@ class Service:
     def _save_known_nfc_uids_with_names(self, entries):
         payload = {
             "uids": [
-                {"uid": uid, "name": name} if name not in (None, "") else uid
+                {"uid": uid, "name": name}
+                if name is not None and name != ""
+                else uid
                 for uid, name in sorted(entries.items())
             ]
         }
@@ -539,6 +545,17 @@ class Service:
     def _start_home_assistant_api(self):
         if not self.home_assistant_enabled:
             return
+        if self.home_assistant_token in (None, ""):
+            log.warning(
+                "Home Assistant API is enabled without a token; requests will be unauthenticated"
+            )
+        if (
+            self.home_assistant_enable_shell_command
+            and not self.home_assistant_shell_command_whitelist
+        ):
+            log.warning(
+                "Home Assistant remote shell command feature is enabled with an empty whitelist; all commands are allowed"
+            )
         try:
             handler_cls = self._build_home_assistant_handler()
             self._home_assistant_httpd = ThreadingHTTPServer(
@@ -564,7 +581,7 @@ class Service:
             self._home_assistant_httpd = None
         if self._home_assistant_thread is not None:
             self._home_assistant_thread.join(
-                timeout=self.HTTP_SERVER_SHUTDOWN_TIMEOUT_SECONDS
+                timeout=self.HTTP_SHUTDOWN_TIMEOUT
             )
             self._home_assistant_thread = None
 

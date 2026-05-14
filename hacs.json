@@ -1,0 +1,6 @@
+{
+  "name": "Apple Home Key Reader",
+  "content_in_root": false,
+  "render_readme": true,
+  "domains": ["apple_home_key_reader"]
+}

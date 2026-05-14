@@ -27,7 +27,7 @@ class Repository:
     def _load_state_from_file(self):
         try:
             with self._state_lock:
-                with open(self.storage_file_path, "r+", encoding="utf-8") as handle:
+                with open(self.storage_file_path, "r", encoding="utf-8") as handle:
                     configuration = json.load(handle)
                 self._reader_private_key = bytes.fromhex(
                     configuration.get("reader_private_key", "00" * 32)

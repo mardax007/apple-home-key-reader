@@ -364,7 +364,7 @@ class Service:
         payload = {
             "uids": [
                 {"uid": uid, "name": name}
-                if name is not None and name != ""
+                if name is not None
                 else uid
                 for uid, name in sorted(entries.items())
             ]

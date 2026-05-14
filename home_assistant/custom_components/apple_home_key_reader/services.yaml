@@ -27,7 +27,6 @@ add_known_uid:
       name: Entry ID
       selector:
         text:
-
 remove_known_uid:
   name: Remove known NFC UID
   description: Remove a known NFC UID.
@@ -88,4 +87,3 @@ run_shell_command:
       name: Entry ID
       selector:
         text:
-

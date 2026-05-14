@@ -26,7 +26,7 @@ class AppleHomeKeyReaderConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if not host:
             return self.async_abort(reason="cannot_connect")
         port = int(getattr(discovery_info, "port", DEFAULT_PORT) or DEFAULT_PORT)
-        name = str(getattr(discovery_info, "name", "Apple Home Key Reader") or "")
+        name = str(getattr(discovery_info, "name", "") or "Apple Home Key Reader")
 
         await self.async_set_unique_id(f"{host}:{port}")
         self._abort_if_unique_id_configured(
@@ -83,4 +83,3 @@ class AppleHomeKeyReaderConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
         return self.async_show_form(step_id="user", data_schema=schema, errors=errors)
-

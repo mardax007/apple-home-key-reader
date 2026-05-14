@@ -89,8 +89,5 @@ class AppleHomeKeyReaderApi:
             f"{self._base_path}/shell/run",
             {"command": command},
         )
-
-
 class AppleHomeKeyReaderError(Exception):
     pass
-

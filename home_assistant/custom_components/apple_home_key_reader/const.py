@@ -11,4 +11,3 @@ SERVICE_REMOVE_KNOWN_UID = "remove_known_uid"
 SERVICE_ADD_UNKNOWN_UID = "add_unknown_uid"
 SERVICE_REMOVE_UNKNOWN_UID = "remove_unknown_uid"
 SERVICE_RUN_SHELL_COMMAND = "run_shell_command"
-

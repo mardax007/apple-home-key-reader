@@ -40,7 +40,7 @@ class Repository:
                 ]
         except Exception:
             log.exception(
-                f"Could not load Home Key configuration. Assuming that device is not yet configured..."
+                "Could not load Home Key configuration. Assuming that device is not yet configured..."
             )
             pass
 
@@ -161,4 +161,11 @@ class Repository:
                 if issuer not in iss:
                     iss.append(issuer)
             self._issuers = iss
+            self._refresh_state()
+
+    def reset(self):
+        with self._transaction_lock:
+            self._reader_private_key = bytes.fromhex("00" * 32)
+            self._reader_identifier = bytes.fromhex("00" * 8)
+            self._issuers = []
             self._refresh_state()

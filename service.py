@@ -521,12 +521,11 @@ class Service:
         return response
 
     def remove_reader_key(self, request: ReaderKeyRequest) -> ReaderKeyResponse:
-        if request.key_identifier == self.repository.get_reader_group_identifier():
-            self.repository.set_reader_private_key(bytes.fromhex("00" * 32))
+        key_exists = request.key_identifier == self.repository.get_reader_group_identifier()
+        if key_exists:
+            self.repository.reset()
         response = ReaderKeyResponse(
-            status=OperationStatus.SUCCESS
-            if request.key_identifier == self.repository.get_reader_group_identifier()
-            else OperationStatus.DOES_NOT_EXIST
+            status=OperationStatus.SUCCESS if key_exists else OperationStatus.DOES_NOT_EXIST
         )
         return response
 

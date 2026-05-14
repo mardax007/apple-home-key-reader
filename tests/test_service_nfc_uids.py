@@ -205,3 +205,6 @@ def test_remote_shell_command_whitelist():
         ["/usr/bin/python3", "--version"]
     ) is True
     assert service_whitelist._is_remote_shell_command_allowed(["date"]) is False
+    assert service_whitelist._is_remote_shell_command_allowed(
+        ["/tmp/echo", "hello"]
+    ) is False

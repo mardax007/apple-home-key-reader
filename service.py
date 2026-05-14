@@ -47,6 +47,7 @@ log = logging.getLogger()
 class Service:
     UNCONFIGURED_READER_PRIVATE_KEY = bytes.fromhex("00" * 32)
     HTTP_SHUTDOWN_TIMEOUT = 2
+    HTTP_SERVER_POLL_INTERVAL = 0.5
 
     @staticmethod
     def _parse_bool(value):
@@ -416,9 +417,14 @@ class Service:
             return True
 
         executable = str(command_args[0]).strip()
-        executable_name = os.path.basename(executable)
-        whitelist = set(self.home_assistant_shell_command_whitelist)
-        return executable in whitelist or executable_name in whitelist
+        for allowed in self.home_assistant_shell_command_whitelist:
+            if "/" in allowed:
+                if executable == allowed:
+                    return True
+                continue
+            if "/" not in executable and executable == allowed:
+                return True
+        return False
 
     @staticmethod
     def _read_json_body(request):
@@ -563,7 +569,7 @@ class Service:
             )
             self._home_assistant_thread = Thread(
                 target=self._home_assistant_httpd.serve_forever,
-                kwargs={"poll_interval": 0.5},
+                kwargs={"poll_interval": self.HTTP_SERVER_POLL_INTERVAL},
                 daemon=True,
             )
             self._home_assistant_thread.start()
@@ -583,6 +589,8 @@ class Service:
             self._home_assistant_thread.join(
                 timeout=self.HTTP_SHUTDOWN_TIMEOUT
             )
+            if self._home_assistant_thread.is_alive():
+                log.warning("Home Assistant API server thread did not stop cleanly")
             self._home_assistant_thread = None
 
     @staticmethod

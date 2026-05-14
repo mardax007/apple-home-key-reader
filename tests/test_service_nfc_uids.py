@@ -276,23 +276,38 @@ def test_list_known_and_unknown_nfc_uids(tmp_path):
 
 def test_home_assistant_discovery_registers_with_non_strict_validation(monkeypatch):
     service = Service(FakeCLF(), FakeRepository(), home_assistant_port=9780)
+    captured_service_info = {}
 
     class FakeZeroconf:
         def __init__(self):
             self.kwargs = None
+            self.called = False
+            self.info = None
 
-        def register_service(self, *args, **kwargs):
+        def register_service(self, info, **kwargs):
+            self.called = True
+            self.info = info
             self.kwargs = kwargs
 
         def close(self):
             pass
 
     fake_zeroconf = FakeZeroconf()
+    fake_service_info = object()
+
+    def fake_service_info_factory(*args, **kwargs):
+        captured_service_info["args"] = args
+        captured_service_info["kwargs"] = kwargs
+        return fake_service_info
 
     monkeypatch.setattr(service, "_resolve_local_ip", lambda: "192.168.2.16")
-    monkeypatch.setattr(service_module, "ServiceInfo", lambda *args, **kwargs: object())
+    monkeypatch.setattr(service_module, "ServiceInfo", fake_service_info_factory)
     monkeypatch.setattr(service_module, "Zeroconf", lambda: fake_zeroconf)
 
     service._start_home_assistant_discovery()
 
+    assert captured_service_info["args"][0] == Service.HOME_ASSISTANT_SERVICE_TYPE
+    assert captured_service_info["kwargs"]["port"] == 9780
+    assert fake_zeroconf.called is True
+    assert fake_zeroconf.info is fake_service_info
     assert fake_zeroconf.kwargs == {"strict": False}

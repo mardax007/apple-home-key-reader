@@ -27,7 +27,8 @@ class Repository:
     def _load_state_from_file(self):
         try:
             with self._state_lock:
-                configuration = json.load(open(self.storage_file_path, "r+"))
+                with open(self.storage_file_path, "r", encoding="utf-8") as handle:
+                    configuration = json.load(handle)
                 self._reader_private_key = bytes.fromhex(
                     configuration.get("reader_private_key", "00" * 32)
                 )
@@ -38,25 +39,29 @@ class Repository:
                     Issuer.from_dict(issuer)
                     for _, issuer in configuration.get("issuers", {}).items()
                 ]
+        except FileNotFoundError:
+            log.info(
+                "Could not load Home Key configuration. Assuming that device is not yet configured..."
+            )
         except Exception:
             log.exception(
-                f"Could not load Home Key configuration. Assuming that device is not yet configured..."
+                "Could not load Home Key configuration. Assuming that device is not yet configured..."
             )
-            pass
 
     def _save_state_to_file(self):
         with self._state_lock:
-            json.dump(
-                {
-                    "reader_private_key": self._reader_private_key.hex(),
-                    "reader_identifier": self._reader_identifier.hex(),
-                    "issuers": {
-                        issuer.id.hex(): issuer.to_dict() for issuer in self._issuers
+            with open(self.storage_file_path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "reader_private_key": self._reader_private_key.hex(),
+                        "reader_identifier": self._reader_identifier.hex(),
+                        "issuers": {
+                            issuer.id.hex(): issuer.to_dict() for issuer in self._issuers
+                        },
                     },
-                },
-                open(self.storage_file_path, "w"),
-                indent=2,
-            )
+                    handle,
+                    indent=2,
+                )
 
     def _refresh_state(self):
         self._save_state_to_file()

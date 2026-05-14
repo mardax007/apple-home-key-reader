@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import shlex
+import shutil
 import subprocess
 import time
 from operator import attrgetter
@@ -413,16 +414,23 @@ class Service:
         command_args = [str(item).strip() for item in command if str(item).strip()]
         if not command_args:
             return False
+        executable = command_args[0]
+        executable_path = (
+            executable if os.path.isabs(executable) else shutil.which(executable)
+        )
+        if executable_path in (None, ""):
+            return False
+        resolved_executable = os.path.realpath(executable_path)
         if not self.home_assistant_shell_command_whitelist:
             return True
 
-        executable = command_args[0]
         for allowed in self.home_assistant_shell_command_whitelist:
             if "/" in allowed:
-                if executable == allowed:
+                if resolved_executable == os.path.realpath(allowed):
                     return True
                 continue
-            if "/" not in executable and executable == allowed:
+            allowed_path = shutil.which(allowed)
+            if allowed_path and resolved_executable == os.path.realpath(allowed_path):
                 return True
         return False
 

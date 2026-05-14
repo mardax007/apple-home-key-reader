@@ -115,6 +115,7 @@ Configuration is done via a JSON file `configuration.json`, with the following 4
       * `shell_command_whitelist`: whitelist for `/ha/shell/run`.  
         If this list is empty, all commands are allowed (when `enable_shell_command=true`).  
         If non-empty, only commands whose executable matches a whitelist entry are allowed.
+        **Security warning**: enabling shell commands with an empty whitelist effectively grants full command execution on the Raspberry Pi. Keep this disabled unless you trust your Home Assistant network and API token setup.
 
 # Home Assistant integration
 

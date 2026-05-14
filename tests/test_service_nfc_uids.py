@@ -142,3 +142,69 @@ def test_homekey_user_name_resolution_by_endpoint_id_and_public_key(tmp_path):
 
     assert service._get_homekey_user_name(endpoint_by_id) == "Alice"
     assert service._get_homekey_user_name(endpoint_by_public_key) == "Bob"
+
+
+def test_add_and_remove_known_uid_via_management_helpers(tmp_path):
+    known_file = tmp_path / "known.json"
+    known_file.write_text(json.dumps({"uids": [{"uid": "AABB", "name": "Alice"}]}))
+    service = Service(FakeCLF(), FakeRepository(), known_nfc_uids_path=str(known_file))
+
+    assert service.add_known_nfc_uid("CC:DD", "Guest") is True
+    assert service.add_known_nfc_uid("CCDD", "Guest") is False
+    assert service.remove_known_nfc_uid("AABB") is True
+    assert service.remove_known_nfc_uid("AABB") is False
+
+    content = json.loads(known_file.read_text())
+    assert content == {"uids": [{"uid": "CCDD", "name": "Guest"}]}
+
+
+def test_add_and_remove_unknown_uid_via_management_helpers(tmp_path):
+    unknown_file = tmp_path / "unknown.json"
+    unknown_file.write_text(json.dumps({"uids": ["AABB"]}))
+    service = Service(FakeCLF(), FakeRepository(), new_nfc_uids_path=str(unknown_file))
+
+    assert service.add_unknown_nfc_uid("CC:DD") is True
+    assert service.add_unknown_nfc_uid("CCDD") is False
+    assert service.remove_unknown_nfc_uid("AABB") is True
+    assert service.remove_unknown_nfc_uid("AABB") is False
+
+    content = json.loads(unknown_file.read_text())
+    assert content == {"uids": ["CCDD"]}
+
+
+def test_remote_shell_command_disabled():
+    service_disabled = Service(
+        FakeCLF(),
+        FakeRepository(),
+        home_assistant_enable_shell_command=False,
+        home_assistant_shell_command_whitelist=[],
+    )
+    assert service_disabled._is_remote_shell_command_allowed(["echo", "hello"]) is False
+
+
+def test_remote_shell_command_allow_all():
+    service_allow_all = Service(
+        FakeCLF(),
+        FakeRepository(),
+        home_assistant_enable_shell_command=True,
+        home_assistant_shell_command_whitelist=[],
+    )
+    assert service_allow_all._is_remote_shell_command_allowed(["echo", "hello"]) is True
+    assert service_allow_all._is_remote_shell_command_allowed(["/bin/date"]) is True
+
+
+def test_remote_shell_command_whitelist():
+    service_whitelist = Service(
+        FakeCLF(),
+        FakeRepository(),
+        home_assistant_enable_shell_command=True,
+        home_assistant_shell_command_whitelist=["echo", "/usr/bin/python3"],
+    )
+    assert service_whitelist._is_remote_shell_command_allowed(["echo", "hello"]) is True
+    assert service_whitelist._is_remote_shell_command_allowed(
+        ["/usr/bin/python3", "--version"]
+    ) is True
+    assert service_whitelist._is_remote_shell_command_allowed(["date"]) is False
+    assert service_whitelist._is_remote_shell_command_allowed(
+        ["/tmp/echo", "hello"]
+    ) is False

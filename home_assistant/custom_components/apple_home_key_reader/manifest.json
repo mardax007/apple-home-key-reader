@@ -1,0 +1,16 @@
+{
+  "domain": "apple_home_key_reader",
+  "name": "Apple Home Key Reader",
+  "codeowners": ["@mardax007"],
+  "config_flow": true,
+  "documentation": "https://github.com/mardax007/apple-home-key-reader",
+  "iot_class": "local_polling",
+  "requirements": [],
+  "version": "0.1.0",
+  "zeroconf": [
+    {
+      "type": "_apple-home-key-reader._tcp.local.",
+      "name": "*"
+    }
+  ]
+}

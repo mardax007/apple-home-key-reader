@@ -64,6 +64,18 @@ Other OS + Python version combos were not verified but may still work.
     python3 main.py
     ```
 
+## Updating
+
+To update an existing checkout with one command:
+
+```
+./update.sh
+```
+
+This will:
+1. Pull latest commits using `git pull --ff-only`;
+2. Re-install runtime dependencies from `requirements.txt`.
+
 # Configuration
 
 Configuration is done via a JSON file `configuration.json`, with the following 4 blocks configurable:
@@ -106,6 +118,45 @@ Configuration is done via a JSON file `configuration.json`, with the following 4
       * `{"endpoint_ids": {"ABCDEF123456": "Alice"}}`
       * `{"public_keys": {"04ABCD...": "Alice iPhone"}}`
       * `{"ABCDEF123456": "Alice"}` (interpreted as endpoint id mapping).
+    * `home_assistant`: optional HTTP API server for Home Assistant integration:
+      * `enabled`: enables API server if true;
+      * `host`: API bind host, default `0.0.0.0` for LAN discovery;
+      * `port`: API listen port, default `9780`;
+      * `token`: optional shared token (`Authorization: Bearer <token>` or `X-HA-Token`);
+      * `enable_shell_command`: allows Home Assistant to run shell commands via `/ha/shell/run` (subject to whitelist when configured). Set to `false` to disable this feature;
+      * `shell_command_whitelist`: whitelist for `/ha/shell/run`.  
+        If this list is empty, all commands are allowed (when `enable_shell_command=true`).  
+        If non-empty, only commands whose executable matches a whitelist entry are allowed.
+        **Security warning**: enabling shell commands with an empty whitelist effectively grants full command execution on the Raspberry Pi. Keep this disabled unless you trust your Home Assistant network and API token setup.
+
+# Home Assistant integration
+
+When `homekey.home_assistant.enabled=true`, the app exposes an HTTP API and publishes an mDNS service (`_apple-home-key-reader._tcp.local`) for discovery.
+
+For "integration popup" onboarding in Home Assistant:
+1. Copy this folder into your Home Assistant config:
+   - `home_assistant/custom_components/apple_home_key_reader`
+2. Restart Home Assistant.
+3. Power up the Raspberry Pi on the same LAN.
+4. Home Assistant should discover it and show **Apple Home Key Reader** in Integrations.
+
+After setup, use Home Assistant services from this integration:
+* `apple_home_key_reader.run_known_shell_command`
+* `apple_home_key_reader.add_known_uid`
+* `apple_home_key_reader.remove_known_uid`
+* `apple_home_key_reader.add_unknown_uid`
+* `apple_home_key_reader.remove_unknown_uid`
+* `apple_home_key_reader.run_shell_command`
+
+Underlying Pi API endpoints:
+
+* `GET /ha/health`
+* `POST /ha/run-known-shell-command` - runs `nfc.on_known_shell_command`
+* `POST /ha/nfc/known/add` with body `{"uid":"AABB","name":"Alice tag"}`
+* `POST /ha/nfc/known/remove` with body `{"uid":"AABB"}`
+* `POST /ha/nfc/unknown/add` with body `{"uid":"AABB"}`
+* `POST /ha/nfc/unknown/remove` with body `{"uid":"AABB"}`
+* `POST /ha/shell/run` with body `{"command":["echo","hello"]}` (controlled by `enable_shell_command` and `shell_command_whitelist`)
 
 
 # Project structure

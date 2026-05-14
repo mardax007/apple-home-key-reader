@@ -47,7 +47,6 @@ class Repository:
             log.exception(
                 "Could not load Home Key configuration. Assuming that device is not yet configured..."
             )
-            pass
 
     def _save_state_to_file(self):
         with self._state_lock:

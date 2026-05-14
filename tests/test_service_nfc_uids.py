@@ -1,4 +1,5 @@
 import json
+import subprocess
 
 from service import Service
 
@@ -208,3 +209,65 @@ def test_remote_shell_command_whitelist():
     assert service_whitelist._is_remote_shell_command_allowed(
         ["/tmp/echo", "hello"]
     ) is False
+
+
+def test_prepare_shell_command_args_supports_string_and_list():
+    service = Service(FakeCLF(), FakeRepository())
+    assert service._prepare_shell_command_args("echo hello") == ["echo", "hello"]
+    assert service._prepare_shell_command_args(["echo", " hello ", ""]) == [
+        "echo",
+        "hello",
+    ]
+
+
+def test_run_shell_command_with_response_captures_output(monkeypatch):
+    service = Service(FakeCLF(), FakeRepository())
+
+    def fake_run(*args, **kwargs):
+        return subprocess.CompletedProcess(
+            args=["echo", "hello"], returncode=0, stdout="hello\n", stderr=""
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    result = service._run_shell_command_with_response("echo hello", "test")
+    assert result == {
+        "ok": True,
+        "command": ["echo", "hello"],
+        "returncode": 0,
+        "stdout": "hello\n",
+        "stderr": "",
+    }
+
+
+def test_run_shell_command_with_response_timeout(monkeypatch):
+    service = Service(FakeCLF(), FakeRepository())
+
+    def fake_run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(cmd=["echo", "hello"], timeout=1)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    result = service._run_shell_command_with_response("echo hello", "test")
+    assert result["ok"] is False
+    assert result["error"] == "command-timeout"
+    assert result["command"] == ["echo", "hello"]
+
+
+def test_list_known_and_unknown_nfc_uids(tmp_path):
+    known_file = tmp_path / "known.json"
+    known_file.write_text(
+        json.dumps({"uids": [{"uid": "CCDD", "name": "Guest"}, "AABB"]})
+    )
+    unknown_file = tmp_path / "unknown.json"
+    unknown_file.write_text(json.dumps({"uids": ["5566", "1122"]}))
+    service = Service(
+        FakeCLF(),
+        FakeRepository(),
+        known_nfc_uids_path=str(known_file),
+        new_nfc_uids_path=str(unknown_file),
+    )
+
+    assert service.list_known_nfc_uids() == [
+        {"uid": "AABB", "name": None},
+        {"uid": "CCDD", "name": "Guest"},
+    ]
+    assert service.list_unknown_nfc_uids() == ["1122", "5566"]

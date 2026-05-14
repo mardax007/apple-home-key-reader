@@ -147,16 +147,26 @@ After setup, use Home Assistant services from this integration:
 * `apple_home_key_reader.add_unknown_uid`
 * `apple_home_key_reader.remove_unknown_uid`
 * `apple_home_key_reader.run_shell_command`
+* `apple_home_key_reader.list_known_uids`
+* `apple_home_key_reader.list_unknown_uids`
+
+`run_shell_command` accepts either:
+* a string: `"echo hello"`
+* an argument array: `["echo", "hello"]`
+
+Shell command services now return command execution details (`ok`, `returncode`, `stdout`, `stderr`) when called with response capture in Home Assistant.
 
 Underlying Pi API endpoints:
 
 * `GET /ha/health`
+* `GET /ha/nfc/known/list`
+* `GET /ha/nfc/unknown/list`
 * `POST /ha/run-known-shell-command` - runs `nfc.on_known_shell_command`
 * `POST /ha/nfc/known/add` with body `{"uid":"AABB","name":"Alice tag"}`
 * `POST /ha/nfc/known/remove` with body `{"uid":"AABB"}`
 * `POST /ha/nfc/unknown/add` with body `{"uid":"AABB"}`
 * `POST /ha/nfc/unknown/remove` with body `{"uid":"AABB"}`
-* `POST /ha/shell/run` with body `{"command":["echo","hello"]}` (controlled by `enable_shell_command` and `shell_command_whitelist`)
+* `POST /ha/shell/run` with body `{"command":"echo hello"}` or `{"command":["echo","hello"]}` (controlled by `enable_shell_command` and `shell_command_whitelist`)
 
 
 # Project structure

@@ -392,7 +392,7 @@ class Service:
             return False
         log.info(f'Running shell command for "{reason}" event')
         try:
-            command_args = command if isinstance(command, list) else shlex.split(command)
+            command_args = self._prepare_shell_command_args(command)
             if not command_args:
                 return False
             subprocess.Popen(
@@ -409,14 +409,62 @@ class Service:
             )
             return False
 
+    @staticmethod
+    def _prepare_shell_command_args(command):
+        if isinstance(command, list):
+            return [str(item).strip() for item in command if str(item).strip()]
+        if isinstance(command, str):
+            return [item for item in shlex.split(command) if item]
+        return []
+
+    def _run_shell_command_with_response(self, command, reason, timeout_seconds=30):
+        command_args = self._prepare_shell_command_args(command)
+        if not command_args:
+            return {
+                "ok": False,
+                "error": "invalid-command",
+                "details": "command must be a non-empty string or argument array",
+            }
+
+        log.info(f'Running shell command for "{reason}" event with response capture')
+        try:
+            result = subprocess.run(
+                command_args,
+                shell=False,
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+                check=False,
+            )
+            return {
+                "ok": result.returncode == 0,
+                "command": command_args,
+                "returncode": result.returncode,
+                "stdout": result.stdout,
+                "stderr": result.stderr,
+            }
+        except subprocess.TimeoutExpired as exc:
+            return {
+                "ok": False,
+                "command": command_args,
+                "error": "command-timeout",
+                "details": str(exc),
+            }
+        except Exception as exc:
+            log.exception(
+                f'Could not run shell command for "{reason}" event: {command}'
+            )
+            return {
+                "ok": False,
+                "command": command_args,
+                "error": "command-execution-failed",
+                "details": str(exc),
+            }
+
     def _is_remote_shell_command_allowed(self, command):
-        if command is None:
-            return False
         if not self.home_assistant_enable_shell_command:
             return False
-        if not isinstance(command, list):
-            return False
-        command_args = [str(item).strip() for item in command if str(item).strip()]
+        command_args = self._prepare_shell_command_args(command)
         if not command_args:
             return False
         executable = command_args[0]
@@ -483,6 +531,18 @@ class Service:
                     return service._write_home_assistant_response(
                         self, 401, {"ok": False, "error": "unauthorized"}
                     )
+                if self.path == "/ha/nfc/known/list":
+                    return service._write_home_assistant_response(
+                        self,
+                        200,
+                        {"ok": True, "uids": service.list_known_nfc_uids()},
+                    )
+                if self.path == "/ha/nfc/unknown/list":
+                    return service._write_home_assistant_response(
+                        self,
+                        200,
+                        {"ok": True, "uids": service.list_unknown_nfc_uids()},
+                    )
                 if self.path != "/ha/health":
                     return service._write_home_assistant_response(
                         self, 404, {"ok": False, "error": "not-found"}
@@ -501,10 +561,11 @@ class Service:
                     )
                 path = self.path
                 if path == "/ha/run-known-shell-command":
-                    ran = service._run_shell_command(
-                        service.on_known_nfc_shell_command, "home-assistant-known-shell"
+                    result = service._run_shell_command_with_response(
+                        service.on_known_nfc_shell_command,
+                        "home-assistant-known-shell",
                     )
-                    return service._write_home_assistant_response(self, 200, {"ok": ran})
+                    return service._write_home_assistant_response(self, 200, result)
                 if path == "/ha/nfc/known/add":
                     changed = service.add_known_nfc_uid(
                         payload.get("uid"), payload.get("name")
@@ -535,26 +596,28 @@ class Service:
                             403,
                             {"ok": False, "error": "remote-shell-command-disabled"},
                         )
-                    if not isinstance(command, list):
+                    command_args = service._prepare_shell_command_args(command)
+                    if not command_args:
                         return service._write_home_assistant_response(
                             self,
                             400,
                             {
                                 "ok": False,
                                 "error": "invalid-command",
-                                "details": "command must be a JSON array of arguments",
+                                "details": (
+                                    "command must be a non-empty string "
+                                    "or JSON array of arguments"
+                                ),
                             },
                         )
                     if not service._is_remote_shell_command_allowed(command):
                         return service._write_home_assistant_response(
                             self, 403, {"ok": False, "error": "command-not-allowed"}
                         )
-                    ran = service._run_shell_command(
-                        command, "home-assistant-remote-shell"
+                    result = service._run_shell_command_with_response(
+                        command_args, "home-assistant-remote-shell"
                     )
-                    return service._write_home_assistant_response(
-                        self, 200, {"ok": ran}
-                    )
+                    return service._write_home_assistant_response(self, 200, result)
                 return service._write_home_assistant_response(
                     self, 404, {"ok": False, "error": "not-found"}
                 )
@@ -688,6 +751,19 @@ class Service:
                 pass
             self._home_assistant_zeroconf = None
         self._home_assistant_service_info = None
+
+    def list_known_nfc_uids(self):
+        with self._nfc_uids_lock:
+            entries = self._load_known_nfc_uids_with_names()
+        return [
+            {"uid": uid, "name": name}
+            for uid, name in sorted(entries.items(), key=lambda item: item[0])
+        ]
+
+    def list_unknown_nfc_uids(self):
+        with self._nfc_uids_lock:
+            values = self._load_uid_list(self.new_nfc_uids_path)
+        return sorted(values)
 
     @staticmethod
     def _extract_uid(remote_target=None, target=None):

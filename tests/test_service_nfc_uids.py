@@ -2,6 +2,7 @@ import json
 import subprocess
 
 from service import Service
+import service as service_module
 
 
 class FakeCLF:
@@ -271,3 +272,27 @@ def test_list_known_and_unknown_nfc_uids(tmp_path):
         {"uid": "CCDD", "name": "Guest"},
     ]
     assert service.list_unknown_nfc_uids() == ["1122", "5566"]
+
+
+def test_home_assistant_discovery_registers_with_non_strict_validation(monkeypatch):
+    service = Service(FakeCLF(), FakeRepository(), home_assistant_port=9780)
+
+    class FakeZeroconf:
+        def __init__(self):
+            self.kwargs = None
+
+        def register_service(self, *args, **kwargs):
+            self.kwargs = kwargs
+
+        def close(self):
+            pass
+
+    fake_zeroconf = FakeZeroconf()
+
+    monkeypatch.setattr(service, "_resolve_local_ip", lambda: "192.168.2.16")
+    monkeypatch.setattr(service_module, "ServiceInfo", lambda *args, **kwargs: object())
+    monkeypatch.setattr(service_module, "Zeroconf", lambda: fake_zeroconf)
+
+    service._start_home_assistant_discovery()
+
+    assert fake_zeroconf.kwargs == {"strict": False}

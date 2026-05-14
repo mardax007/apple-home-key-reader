@@ -717,7 +717,8 @@ class Service:
             )
             self._home_assistant_zeroconf = Zeroconf()
             self._home_assistant_zeroconf.register_service(
-                self._home_assistant_service_info
+                self._home_assistant_service_info,
+                strict=False,
             )
             log.info(
                 "Published Home Assistant discovery service via mDNS at "

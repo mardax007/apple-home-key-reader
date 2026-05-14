@@ -46,6 +46,7 @@ log = logging.getLogger()
 
 class Service:
     UNCONFIGURED_READER_PRIVATE_KEY = bytes.fromhex("00" * 32)
+    HTTP_SERVER_SHUTDOWN_TIMEOUT_SECONDS = 2
 
     @staticmethod
     def _parse_bool(value):
@@ -449,8 +450,8 @@ class Service:
         service = self
 
         class HomeAssistantHandler(BaseHTTPRequestHandler):
-            def log_message(self, format, *args):
-                log.debug(f"home-assistant-api {format % args}")
+            def log_message(self, msg_format, *args):
+                log.debug(f"home-assistant-api {msg_format % args}")
 
             def do_GET(self):
                 if not service._is_home_assistant_request_authorized(self.headers):
@@ -562,7 +563,9 @@ class Service:
             self._home_assistant_httpd.server_close()
             self._home_assistant_httpd = None
         if self._home_assistant_thread is not None:
-            self._home_assistant_thread.join(timeout=2)
+            self._home_assistant_thread.join(
+                timeout=self.HTTP_SERVER_SHUTDOWN_TIMEOUT_SECONDS
+            )
             self._home_assistant_thread = None
 
     @staticmethod

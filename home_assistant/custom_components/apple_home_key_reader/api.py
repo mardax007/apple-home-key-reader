@@ -83,12 +83,18 @@ class AppleHomeKeyReaderApi:
             {"uid": uid},
         )
 
-    async def run_shell_command(self, command: list[str]) -> dict:
+    async def run_shell_command(self, command: list[str] | str) -> dict:
         return await self.request(
             "POST",
             f"{self._base_path}/shell/run",
             {"command": command},
         )
+
+    async def list_known_uids(self) -> dict:
+        return await self.request("GET", f"{self._base_path}/nfc/known/list")
+
+    async def list_unknown_uids(self) -> dict:
+        return await self.request("GET", f"{self._base_path}/nfc/unknown/list")
 
 
 class AppleHomeKeyReaderError(Exception):

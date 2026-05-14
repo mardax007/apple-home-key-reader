@@ -6,10 +6,12 @@ import logging
 import os
 import shlex
 import shutil
+import socket
 import subprocess
 import time
 from operator import attrgetter
 from threading import Lock, Thread
+from zeroconf import ServiceInfo, Zeroconf
 
 from entity import (
     Issuer,
@@ -49,6 +51,7 @@ class Service:
     UNCONFIGURED_READER_PRIVATE_KEY = bytes.fromhex("00" * 32)
     HTTP_SHUTDOWN_TIMEOUT = 2
     HTTP_SERVER_POLL_INTERVAL = 0.5
+    HOME_ASSISTANT_SERVICE_TYPE = "_apple-home-key-reader._tcp.local."
 
     @staticmethod
     def _parse_bool(value):
@@ -73,7 +76,7 @@ class Service:
         on_known_nfc_shell_command: str = None,
         on_unknown_nfc_shell_command: str = None,
         home_assistant_enabled: bool = False,
-        home_assistant_host: str = "127.0.0.1",
+        home_assistant_host: str = "0.0.0.0",
         home_assistant_port: int = 9780,
         home_assistant_token: str = None,
         home_assistant_enable_shell_command: bool = False,
@@ -120,6 +123,8 @@ class Service:
         self._runner = None
         self._home_assistant_httpd = None
         self._home_assistant_thread = None
+        self._home_assistant_zeroconf = None
+        self._home_assistant_service_info = None
         self._nfc_uids_lock = Lock()
 
     def on_endpoint_authenticated(self, endpoint):
@@ -585,10 +590,12 @@ class Service:
                 "Started Home Assistant API server at "
                 f"http://{self.home_assistant_host}:{self.home_assistant_port}"
             )
+            self._start_home_assistant_discovery()
         except Exception:
             log.exception("Could not start Home Assistant API server")
 
     def _stop_home_assistant_api(self):
+        self._stop_home_assistant_discovery()
         if self._home_assistant_httpd is not None:
             self._home_assistant_httpd.shutdown()
             self._home_assistant_httpd.server_close()
@@ -602,6 +609,85 @@ class Service:
                     "Home Assistant API server thread did not stop within timeout; some resources may remain open"
                 )
             self._home_assistant_thread = None
+
+    @staticmethod
+    def _resolve_local_ip():
+        probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            probe.connect(("8.8.8.8", 80))
+            ip = probe.getsockname()[0]
+        except Exception:
+            ip = None
+        finally:
+            probe.close()
+        if ip not in (None, "", "0.0.0.0") and not ip.startswith("127."):
+            return ip
+        try:
+            ip = socket.gethostbyname(socket.gethostname())
+        except Exception:
+            return None
+        if ip in ("", "0.0.0.0") or ip.startswith("127."):
+            return None
+        return ip
+
+    def _start_home_assistant_discovery(self):
+        advertised_ip = self._resolve_local_ip()
+        if advertised_ip is None:
+            log.warning(
+                "Could not resolve a local network IP for Home Assistant discovery"
+            )
+            return
+        try:
+            instance_name = f"apple-home-key-reader-{socket.gethostname()}"
+            self._home_assistant_service_info = ServiceInfo(
+                self.HOME_ASSISTANT_SERVICE_TYPE,
+                f"{instance_name}.{self.HOME_ASSISTANT_SERVICE_TYPE}",
+                addresses=[socket.inet_aton(advertised_ip)],
+                port=self.home_assistant_port,
+                properties={
+                    "name": "Apple Home Key Reader",
+                    "host": advertised_ip,
+                    "api_path": "/ha/health",
+                    "version": "1",
+                },
+                server=f"{instance_name}.local.",
+            )
+            self._home_assistant_zeroconf = Zeroconf()
+            self._home_assistant_zeroconf.register_service(
+                self._home_assistant_service_info
+            )
+            log.info(
+                "Published Home Assistant discovery service via mDNS at "
+                f"{advertised_ip}:{self.home_assistant_port}"
+            )
+        except Exception:
+            log.exception("Could not publish Home Assistant discovery service")
+            self._home_assistant_service_info = None
+            if self._home_assistant_zeroconf is not None:
+                try:
+                    self._home_assistant_zeroconf.close()
+                except Exception:
+                    pass
+                self._home_assistant_zeroconf = None
+
+    def _stop_home_assistant_discovery(self):
+        if (
+            self._home_assistant_zeroconf is not None
+            and self._home_assistant_service_info is not None
+        ):
+            try:
+                self._home_assistant_zeroconf.unregister_service(
+                    self._home_assistant_service_info
+                )
+            except Exception:
+                log.exception("Could not unpublish Home Assistant discovery service")
+        if self._home_assistant_zeroconf is not None:
+            try:
+                self._home_assistant_zeroconf.close()
+            except Exception:
+                pass
+            self._home_assistant_zeroconf = None
+        self._home_assistant_service_info = None
 
     @staticmethod
     def _extract_uid(remote_target=None, target=None):

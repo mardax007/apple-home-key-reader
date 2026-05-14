@@ -1,0 +1,91 @@
+run_known_shell_command:
+  name: Run known shell command
+  description: Run the configured on_known_shell_command on the Raspberry Pi.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry ID. If omitted, first configured entry is used.
+      selector:
+        text:
+
+add_known_uid:
+  name: Add known NFC UID
+  description: Add a known NFC UID with optional name.
+  fields:
+    uid:
+      required: true
+      name: UID
+      selector:
+        text:
+    name:
+      required: false
+      name: Name
+      selector:
+        text:
+    entry_id:
+      required: false
+      name: Entry ID
+      selector:
+        text:
+
+remove_known_uid:
+  name: Remove known NFC UID
+  description: Remove a known NFC UID.
+  fields:
+    uid:
+      required: true
+      name: UID
+      selector:
+        text:
+    entry_id:
+      required: false
+      name: Entry ID
+      selector:
+        text:
+
+add_unknown_uid:
+  name: Add unknown NFC UID
+  description: Add an NFC UID to the unknown list.
+  fields:
+    uid:
+      required: true
+      name: UID
+      selector:
+        text:
+    entry_id:
+      required: false
+      name: Entry ID
+      selector:
+        text:
+
+remove_unknown_uid:
+  name: Remove unknown NFC UID
+  description: Remove an NFC UID from the unknown list.
+  fields:
+    uid:
+      required: true
+      name: UID
+      selector:
+        text:
+    entry_id:
+      required: false
+      name: Entry ID
+      selector:
+        text:
+
+run_shell_command:
+  name: Run shell command
+  description: Run a shell command on the Raspberry Pi using a command argument list.
+  fields:
+    command:
+      required: true
+      name: Command
+      description: Command and args as list, e.g. ['echo', 'hello']
+      selector:
+        object:
+    entry_id:
+      required: false
+      name: Entry ID
+      selector:
+        text:
+

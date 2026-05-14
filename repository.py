@@ -13,12 +13,14 @@ log = logging.getLogger()
 class Repository:
     """Serves as a way of emulating a storage/database"""
 
+    UNCONFIGURED_READER_PRIVATE_KEY = bytes.fromhex("00" * 32)
+    UNCONFIGURED_READER_IDENTIFIER = bytes.fromhex("00" * 8)
     _issuers: List[Issuer]
 
     def __init__(self, storage_file_path):
         self.storage_file_path = storage_file_path
-        self._reader_private_key = bytes.fromhex("00" * 32)
-        self._reader_identifier = bytes.fromhex("00" * 8)
+        self._reader_private_key = Repository.UNCONFIGURED_READER_PRIVATE_KEY
+        self._reader_identifier = Repository.UNCONFIGURED_READER_IDENTIFIER
         self._issuers = list()
         self._transaction_lock = Lock()
         self._state_lock = Lock()
@@ -29,10 +31,16 @@ class Repository:
             with self._state_lock:
                 configuration = json.load(open(self.storage_file_path, "r+"))
                 self._reader_private_key = bytes.fromhex(
-                    configuration.get("reader_private_key", "00" * 32)
+                    configuration.get(
+                        "reader_private_key",
+                        Repository.UNCONFIGURED_READER_PRIVATE_KEY.hex(),
+                    )
                 )
                 self._reader_identifier = bytes.fromhex(
-                    configuration.get("reader_identifier", "00" * 8)
+                    configuration.get(
+                        "reader_identifier",
+                        Repository.UNCONFIGURED_READER_IDENTIFIER.hex(),
+                    )
                 )
                 self._issuers = [
                     Issuer.from_dict(issuer)
@@ -165,7 +173,7 @@ class Repository:
 
     def reset(self):
         with self._transaction_lock:
-            self._reader_private_key = bytes.fromhex("00" * 32)
-            self._reader_identifier = bytes.fromhex("00" * 8)
+            self._reader_private_key = Repository.UNCONFIGURED_READER_PRIVATE_KEY
+            self._reader_identifier = Repository.UNCONFIGURED_READER_IDENTIFIER
             self._issuers = []
             self._refresh_state()

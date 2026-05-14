@@ -31,7 +31,7 @@ def test_remove_reader_key_resets_existing_instance(tmp_path):
 
     assert response.status == OperationStatus.SUCCESS
     assert repository.get_reader_private_key() == Service.UNCONFIGURED_READER_PRIVATE_KEY
-    assert repository.get_reader_identifier() == bytes.fromhex("00" * 8)
+    assert repository.get_reader_identifier() == Repository.UNCONFIGURED_READER_IDENTIFIER
     assert repository.get_all_issuers() == []
 
 

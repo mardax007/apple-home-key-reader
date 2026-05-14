@@ -43,7 +43,7 @@ log = logging.getLogger()
 
 
 class Service:
-    UNCONFIGURED_READER_PRIVATE_KEY = bytes.fromhex("00" * 32)
+    UNCONFIGURED_READER_PRIVATE_KEY = Repository.UNCONFIGURED_READER_PRIVATE_KEY
 
     def __init__(
         self,

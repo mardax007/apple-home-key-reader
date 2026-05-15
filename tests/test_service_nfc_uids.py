@@ -184,7 +184,7 @@ def test_remote_shell_command_disabled():
     assert service_disabled._is_remote_shell_command_allowed(["echo", "hello"]) is False
 
 
-def test_express_defaults_to_true_when_unset_or_empty():
+def test_express_is_true_when_unset_or_empty():
     service_none = Service(FakeCLF(), FakeRepository(), express=None)
     service_empty = Service(FakeCLF(), FakeRepository(), express="")
 

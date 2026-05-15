@@ -221,6 +221,33 @@ def test_prepare_shell_command_args_supports_string_and_list():
     ]
 
 
+def test_run_unlock_shell_command_prefers_unlock_command_and_falls_back(monkeypatch):
+    service_with_unlock = Service(
+        FakeCLF(),
+        FakeRepository(),
+        on_unlock_shell_command="unlock-cmd",
+        on_known_nfc_shell_command="known-cmd",
+    )
+    service_with_fallback = Service(
+        FakeCLF(),
+        FakeRepository(),
+        on_known_nfc_shell_command="known-cmd",
+    )
+
+    calls = []
+
+    def fake_run(command, reason):
+        calls.append((command, reason))
+        return True
+
+    monkeypatch.setattr(service_with_unlock, "_run_shell_command", fake_run)
+    monkeypatch.setattr(service_with_fallback, "_run_shell_command", fake_run)
+
+    assert service_with_unlock.run_unlock_shell_command("unlock") is True
+    assert service_with_fallback.run_unlock_shell_command("fallback") is True
+    assert calls == [("unlock-cmd", "unlock"), ("known-cmd", "fallback")]
+
+
 def test_run_shell_command_with_response_captures_output(monkeypatch):
     service = Service(FakeCLF(), FakeRepository())
 

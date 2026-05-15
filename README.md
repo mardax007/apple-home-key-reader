@@ -99,7 +99,9 @@ Configuration is done via a JSON file `configuration.json`, with the following 4
     * `{"UID1": "Alice iPhone", "UID2": {"name": "Guest tag"}}`
   * `new_uids_file`: json file where newly seen unknown regular NFC UID values are saved in `{"uids": [...]}` format;
   * `access_log_file`: jsonl file where every known/unknown NFC read and Home Key authentication event is appended;
-  * `on_known_shell_command`: shell command to run when a home key is authenticated, when a known regular NFC UID is read, or when Home app unlocks the lock;
+  * `on_unlock_shell_command`: shell command to run whenever the lock is unlocked (home key authentication, known regular NFC UID, or Home app unlock);
+  * `on_known_shell_command`: shell command to run when a home key is authenticated or when a known regular NFC UID is read.  
+    If `on_unlock_shell_command` is empty, this value is also used for unlock events for backward compatibility;
   * `on_unknown_shell_command`: shell command to run when an unknown regular NFC UID is read (after storing it in `new_uids_file`);
 * `hap`: configuration of the HAP-python library, better left unchanged;
     * `port`: network port of the virtual accessory;

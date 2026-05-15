@@ -73,6 +73,7 @@ class Service:
         new_nfc_uids_path: str = "new_nfc_uids.json",
         access_log_path: str = "access_log.jsonl",
         homekey_user_names_path: str = "homekey_user_names.json",
+        on_unlock_shell_command: str = None,
         on_known_nfc_shell_command: str = None,
         on_unknown_nfc_shell_command: str = None,
         home_assistant_enabled: bool = False,
@@ -90,6 +91,11 @@ class Service:
         self.new_nfc_uids_path = new_nfc_uids_path
         self.access_log_path = access_log_path
         self.homekey_user_names_path = homekey_user_names_path
+        self.on_unlock_shell_command = (
+            on_unlock_shell_command
+            if on_unlock_shell_command not in (None, "")
+            else on_known_nfc_shell_command
+        )
         self.on_known_nfc_shell_command = on_known_nfc_shell_command
         self.on_unknown_nfc_shell_command = on_unknown_nfc_shell_command
         self.home_assistant_enabled = self._parse_bool(home_assistant_enabled)
@@ -436,7 +442,7 @@ class Service:
         return []
 
     def run_unlock_shell_command(self, reason):
-        return self._run_shell_command(self.on_known_nfc_shell_command, reason)
+        return self._run_shell_command(self.on_unlock_shell_command, reason)
 
     def _run_shell_command_with_response(self, command, reason, timeout_seconds=30):
         command_args = self._prepare_shell_command_args(command)

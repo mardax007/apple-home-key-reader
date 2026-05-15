@@ -135,6 +135,8 @@ class Lock(Accessory):
         log.info(f"set_lock_target_state {value}")
         self._lock_target_state = self._lock_current_state = value
         self.lock_current_state.set_value(self._lock_current_state, should_notify=True)
+        if value == 0:
+            self.service.run_unlock_shell_command("home-unlock")
         return self._lock_target_state
 
     def get_lock_version(self):

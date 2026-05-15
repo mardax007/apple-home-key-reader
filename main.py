@@ -67,6 +67,7 @@ def configure_homekey_service(config: dict, nfc_device, repository=None, nfc_con
         homekey_user_names_path=config.get(
             "user_names_file", "homekey_user_names.json"
         ),
+        on_unlock_shell_command=nfc_config.get("on_unlock_shell_command"),
         on_known_nfc_shell_command=nfc_config.get("on_known_shell_command"),
         on_unknown_nfc_shell_command=nfc_config.get("on_unknown_shell_command"),
         home_assistant_enabled=home_assistant_config.get("enabled", False),

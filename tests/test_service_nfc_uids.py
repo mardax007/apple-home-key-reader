@@ -221,6 +221,33 @@ def test_prepare_shell_command_args_supports_string_and_list():
     ]
 
 
+def test_run_unlock_shell_command_prefers_unlock_command_and_falls_back(monkeypatch):
+    service_with_unlock = Service(
+        FakeCLF(),
+        FakeRepository(),
+        on_unlock_shell_command="unlock-cmd",
+        on_known_nfc_shell_command="known-cmd",
+    )
+    service_with_fallback = Service(
+        FakeCLF(),
+        FakeRepository(),
+        on_known_nfc_shell_command="known-cmd",
+    )
+
+    calls = []
+
+    def fake_run(command, reason):
+        calls.append((command, reason))
+        return True
+
+    monkeypatch.setattr(service_with_unlock, "_run_shell_command", fake_run)
+    monkeypatch.setattr(service_with_fallback, "_run_shell_command", fake_run)
+
+    assert service_with_unlock.run_unlock_shell_command("unlock") is True
+    assert service_with_fallback.run_unlock_shell_command("fallback") is True
+    assert calls == [("unlock-cmd", "unlock"), ("known-cmd", "fallback")]
+
+
 def test_run_shell_command_with_response_captures_output(monkeypatch):
     service = Service(FakeCLF(), FakeRepository())
 
@@ -251,6 +278,30 @@ def test_run_shell_command_with_response_timeout(monkeypatch):
     assert result["ok"] is False
     assert result["error"] == "command-timeout"
     assert result["command"] == ["echo", "hello"]
+
+
+def test_run_shell_command_logs_failure_on_non_zero_exit(monkeypatch):
+    service = Service(FakeCLF(), FakeRepository())
+
+    class FakeProcess:
+        @staticmethod
+        def wait():
+            return 7
+
+    class ImmediateExecutor:
+        @staticmethod
+        def submit(target, *args, **kwargs):
+            target(*args)
+
+    errors = []
+
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
+    service._shell_command_monitor_pool = ImmediateExecutor()
+    monkeypatch.setattr(service_module.log, "error", lambda msg: errors.append(msg))
+
+    assert service._run_shell_command("echo hello", "test") is True
+    assert len(errors) == 1
+    assert 'Shell command for "test" event failed with exit code 7' in errors[0]
 
 
 def test_list_known_and_unknown_nfc_uids(tmp_path):

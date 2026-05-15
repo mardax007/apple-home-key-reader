@@ -9,6 +9,7 @@ import shutil
 import socket
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from operator import attrgetter
 from threading import Lock, Thread
 from zeroconf import ServiceInfo, Zeroconf
@@ -73,6 +74,7 @@ class Service:
         new_nfc_uids_path: str = "new_nfc_uids.json",
         access_log_path: str = "access_log.jsonl",
         homekey_user_names_path: str = "homekey_user_names.json",
+        on_unlock_shell_command: str = None,
         on_known_nfc_shell_command: str = None,
         on_unknown_nfc_shell_command: str = None,
         home_assistant_enabled: bool = False,
@@ -90,6 +92,12 @@ class Service:
         self.new_nfc_uids_path = new_nfc_uids_path
         self.access_log_path = access_log_path
         self.homekey_user_names_path = homekey_user_names_path
+        # Empty/None unlock command falls back to legacy on_known command for compatibility.
+        self.on_unlock_shell_command = (
+            on_unlock_shell_command
+            if on_unlock_shell_command not in (None, "")
+            else on_known_nfc_shell_command
+        )
         self.on_known_nfc_shell_command = on_known_nfc_shell_command
         self.on_unknown_nfc_shell_command = on_unknown_nfc_shell_command
         self.home_assistant_enabled = self._parse_bool(home_assistant_enabled)
@@ -126,6 +134,12 @@ class Service:
         self._home_assistant_zeroconf = None
         self._home_assistant_service_info = None
         self._nfc_uids_lock = Lock()
+        # Small bounded pool prevents unbounded thread creation if many tags are read quickly;
+        # waiting on process exits is lightweight and 2 workers is sufficient here.
+        # It is shut down in stop() with wait=False to avoid blocking shutdown on long scripts.
+        self._shell_command_monitor_pool = ThreadPoolExecutor(
+            max_workers=2, thread_name_prefix="shell-command-monitor"
+        )
 
     def on_endpoint_authenticated(self, endpoint):
         """This method will be called when an endpoint is authenticated"""
@@ -395,13 +409,21 @@ class Service:
             command_args = self._prepare_shell_command_args(command)
             if not command_args:
                 return False
-            subprocess.Popen(
+            process = subprocess.Popen(
                 command_args,
                 shell=False,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
+            try:
+                self._shell_command_monitor_pool.submit(
+                    self._wait_for_shell_command_exit, process, reason, command_args
+                )
+            except Exception:
+                log.exception(
+                    f'Could not start shell command monitor for "{reason}" event: {command_args}'
+                )
             return True
         except Exception:
             log.exception(
@@ -410,12 +432,28 @@ class Service:
             return False
 
     @staticmethod
+    def _wait_for_shell_command_exit(process, reason, command_args):
+        try:
+            returncode = process.wait()
+            if returncode != 0:
+                log.error(
+                    f'Shell command for "{reason}" event failed with exit code {returncode}: {command_args}'
+                )
+        except Exception:
+            log.exception(
+                f'Could not monitor shell command for "{reason}" event: {command_args}'
+            )
+
+    @staticmethod
     def _prepare_shell_command_args(command):
         if isinstance(command, list):
             return [str(item).strip() for item in command if str(item).strip()]
         if isinstance(command, str):
             return [item for item in shlex.split(command) if item]
         return []
+
+    def run_unlock_shell_command(self, reason):
+        return self._run_shell_command(self.on_unlock_shell_command, reason)
 
     def _run_shell_command_with_response(self, command, reason, timeout_seconds=30):
         command_args = self._prepare_shell_command_args(command)
@@ -802,7 +840,7 @@ class Service:
                 uid=uid,
                 name=key_name,
             )
-            self._run_shell_command(self.on_known_nfc_shell_command, "known-nfc")
+            self.run_unlock_shell_command("known-nfc")
             return
         log.info(f'NFC UID "{uid}" is unknown')
         self._append_access_log(
@@ -827,6 +865,8 @@ class Service:
     def stop(self):
         self._run_flag = False
         self._stop_home_assistant_api()
+        # Don't block shutdown on long-running commands; queued monitor tasks are canceled.
+        self._shell_command_monitor_pool.shutdown(wait=False, cancel_futures=True)
         if self._runner is not None:
             self._runner.join()
 
@@ -931,9 +971,7 @@ class Service:
                             "flow": str(result_flow),
                         },
                     )
-                    self._run_shell_command(
-                        self.on_known_nfc_shell_command, "homekey-authenticated"
-                    )
+                    self.run_unlock_shell_command("homekey-authenticated")
                     self.on_endpoint_authenticated(endpoint)
             except ProtocolError as e:
                 log.info(f'Could not authenticate device due to protocol error "{e}"')

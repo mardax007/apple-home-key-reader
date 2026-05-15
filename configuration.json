@@ -11,7 +11,8 @@
         "access_log_file": "access_log.jsonl",
         "on_unlock_shell_command": "",
         "on_known_shell_command": "",
-        "on_unknown_shell_command": ""
+        "on_unknown_shell_command": "",
+        "shell_command_working_directory": ""
     },
 
     "hap": {

@@ -80,6 +80,9 @@ def configure_homekey_service(config: dict, nfc_device, repository=None, nfc_con
         home_assistant_shell_command_whitelist=home_assistant_config.get(
             "shell_command_whitelist", []
         ),
+        shell_command_working_directory=nfc_config.get(
+            "shell_command_working_directory"
+        ),
     )
     return service
 

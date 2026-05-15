@@ -83,6 +83,7 @@ class Service:
         home_assistant_token: str = None,
         home_assistant_enable_shell_command: bool = False,
         home_assistant_shell_command_whitelist=None,
+        shell_command_working_directory: str = None,
     ) -> None:
         self.repository = repository
         self.clf = clf
@@ -111,6 +112,23 @@ class Service:
         self.home_assistant_shell_command_whitelist = [
             str(item).strip() for item in whitelist if str(item).strip()
         ]
+        default_shell_command_working_directory = os.path.dirname(
+            os.path.abspath(__file__)
+        )
+        self.shell_command_working_directory = (
+            shell_command_working_directory
+            if shell_command_working_directory not in (None, "")
+            else default_shell_command_working_directory
+        )
+        if (
+            self.shell_command_working_directory is not None
+            and not os.path.isdir(self.shell_command_working_directory)
+        ):
+            log.warning(
+                f'Shell command working directory "{self.shell_command_working_directory}" does not exist. '
+                "Falling back to current process working directory."
+            )
+            self.shell_command_working_directory = None
 
         try:
             self.hardware_finish_color = HardwareFinishColor[finish.upper()]
@@ -412,6 +430,7 @@ class Service:
             process = subprocess.Popen(
                 command_args,
                 shell=False,
+                cwd=self.shell_command_working_directory,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
@@ -469,6 +488,7 @@ class Service:
             result = subprocess.run(
                 command_args,
                 shell=False,
+                cwd=self.shell_command_working_directory,
                 capture_output=True,
                 text=True,
                 timeout=timeout_seconds,

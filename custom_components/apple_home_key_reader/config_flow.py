@@ -17,9 +17,15 @@ _LOGGER = logging.getLogger(__name__)
 class AppleHomeKeyReaderConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
-    _discovered_host: str | None = None
-    _discovered_port: int = DEFAULT_PORT
-    _discovered_name: str | None = None
+    def __init__(self) -> None:
+        self._host: str | None = None
+        self._port: int = DEFAULT_PORT
+        self._name: str | None = None
+
+    def is_matching(self, other_flow: object) -> bool:
+        other_host = getattr(other_flow, "_host", None)
+        other_port = getattr(other_flow, "_port", None)
+        return self._host == other_host and self._port == other_port
 
     async def async_step_zeroconf(self, discovery_info) -> FlowResult:
         host = str(getattr(discovery_info, "host", "") or "")
@@ -32,22 +38,23 @@ class AppleHomeKeyReaderConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             "Zeroconf discovery received host=%s port=%s name=%s", host, port, name
         )
 
+        self._host = host
+        self._port = port
+        self._name = name
+
         await self.async_set_unique_id(f"{host}:{port}")
         self._abort_if_unique_id_configured(
             updates={CONF_HOST: host, CONF_PORT: port}
         )
 
-        self._discovered_host = host
-        self._discovered_port = port
-        self._discovered_name = name
         self.context["title_placeholders"] = {"name": name}
         return await self.async_step_user()
 
     async def async_step_user(self, user_input=None) -> FlowResult:
         errors: dict[str, str] = {}
-        host_default = self._discovered_host or ""
-        port_default = self._discovered_port or DEFAULT_PORT
-        name_default = self._discovered_name or "Apple Home Key Reader"
+        host_default = self._host or ""
+        port_default = self._port or DEFAULT_PORT
+        name_default = self._name or "Apple Home Key Reader"
 
         if user_input is not None:
             host = user_input[CONF_HOST]
@@ -57,6 +64,11 @@ class AppleHomeKeyReaderConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 base_path if base_path.startswith("/") else f"/{base_path}"
             )
             health_url = f"http://{host}:{port}{normalized_base_path}/health"
+
+            self._host = host
+            self._port = port
+            self._name = user_input.get(CONF_NAME, name_default)
+
             await self.async_set_unique_id(f"{host}:{port}")
             self._abort_if_unique_id_configured(
                 updates={CONF_HOST: host, CONF_PORT: port}
@@ -87,7 +99,7 @@ class AppleHomeKeyReaderConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors["base"] = "cannot_connect"
                 else:
                     return self.async_create_entry(
-                        title=user_input.get(CONF_NAME, name_default),
+                        title=self._name,
                         data=user_input,
                     )
             except AppleHomeKeyReaderError as exc:

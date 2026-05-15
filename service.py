@@ -133,6 +133,8 @@ class Service:
         self._home_assistant_zeroconf = None
         self._home_assistant_service_info = None
         self._nfc_uids_lock = Lock()
+        # Small bounded pool prevents unbounded thread creation if many tags are read quickly;
+        # waiting on process exits is lightweight and 2 workers is sufficient here.
         self._shell_command_monitor_pool = ThreadPoolExecutor(
             max_workers=2, thread_name_prefix="shell-command-monitor"
         )
@@ -861,6 +863,7 @@ class Service:
     def stop(self):
         self._run_flag = False
         self._stop_home_assistant_api()
+        # Don't block shutdown on long-running commands; monitor tasks can finish in background.
         self._shell_command_monitor_pool.shutdown(wait=False, cancel_futures=False)
         if self._runner is not None:
             self._runner.join()

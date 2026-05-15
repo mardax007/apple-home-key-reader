@@ -22,13 +22,15 @@ class FakeService:
 class FakeLock:
     set_lock_target_state = Lock.set_lock_target_state
 
+    def __init__(self, service, current_state):
+        self.service = service
+        self._lock_current_state = current_state
+        self._lock_target_state = current_state
+        self.lock_current_state = FakeCharacteristic()
+
 
 def test_set_lock_target_state_runs_unlock_command_for_home_unlock():
-    lock = FakeLock()
-    lock.service = FakeService()
-    lock._lock_current_state = 1
-    lock._lock_target_state = 1
-    lock.lock_current_state = FakeCharacteristic()
+    lock = FakeLock(service=FakeService(), current_state=1)
 
     result = lock.set_lock_target_state(0)
 
@@ -38,11 +40,7 @@ def test_set_lock_target_state_runs_unlock_command_for_home_unlock():
 
 
 def test_set_lock_target_state_does_not_run_unlock_command_for_lock():
-    lock = FakeLock()
-    lock.service = FakeService()
-    lock._lock_current_state = 0
-    lock._lock_target_state = 0
-    lock.lock_current_state = FakeCharacteristic()
+    lock = FakeLock(service=FakeService(), current_state=0)
 
     result = lock.set_lock_target_state(1)
 

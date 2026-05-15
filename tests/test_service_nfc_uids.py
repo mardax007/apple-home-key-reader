@@ -266,6 +266,28 @@ def test_run_unlock_shell_command_prefers_unlock_command_and_falls_back(monkeypa
     assert calls == [("unlock-cmd", "unlock"), ("known-cmd", "fallback")]
 
 
+def test_run_unlock_shell_command_falls_back_when_unlock_command_is_whitespace(
+    monkeypatch,
+):
+    service = Service(
+        FakeCLF(),
+        FakeRepository(),
+        on_unlock_shell_command="   ",
+        on_known_nfc_shell_command="known-cmd",
+    )
+
+    calls = []
+
+    def fake_run(command, reason):
+        calls.append((command, reason))
+        return True
+
+    monkeypatch.setattr(service, "_run_shell_command", fake_run)
+
+    assert service.run_unlock_shell_command("homekey-authenticated") is True
+    assert calls == [("known-cmd", "homekey-authenticated")]
+
+
 def test_run_shell_command_with_response_captures_output(monkeypatch):
     service = Service(FakeCLF(), FakeRepository())
 

@@ -184,6 +184,24 @@ def test_remote_shell_command_disabled():
     assert service_disabled._is_remote_shell_command_allowed(["echo", "hello"]) is False
 
 
+def test_express_defaults_to_enabled_when_unset_or_empty():
+    service_none = Service(FakeCLF(), FakeRepository(), express=None)
+    service_empty = Service(FakeCLF(), FakeRepository(), express="")
+
+    assert service_none.express is True
+    assert service_empty.express is True
+
+
+def test_express_parsing_still_honors_explicit_false_values():
+    service_false_bool = Service(FakeCLF(), FakeRepository(), express=False)
+    service_false_str = Service(FakeCLF(), FakeRepository(), express="false")
+    service_zero_str = Service(FakeCLF(), FakeRepository(), express="0")
+
+    assert service_false_bool.express is False
+    assert service_false_str.express is False
+    assert service_zero_str.express is False
+
+
 def test_remote_shell_command_allow_all():
     service_allow_all = Service(
         FakeCLF(),

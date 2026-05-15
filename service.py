@@ -58,12 +58,15 @@ class Service:
     )
 
     @staticmethod
-    def _parse_bool(value):
+    def _parse_bool(value, default=False):
         if isinstance(value, bool):
             return value
         if value is None:
-            return False
-        return str(value).strip().lower() in ("1", "true", "yes", "on")
+            return default
+        value = str(value).strip().lower()
+        if value == "":
+            return default
+        return value in ("1", "true", "yes", "on")
 
     def __init__(
         self,
@@ -91,7 +94,7 @@ class Service:
         self.repository = repository
         self.clf = clf
         self.throttle_polling = throttle_polling
-        self.express = self._parse_bool(express)
+        self.express = self._parse_bool(express, default=True)
         self.known_nfc_uids_path = known_nfc_uids_path
         self.new_nfc_uids_path = new_nfc_uids_path
         self.access_log_path = access_log_path

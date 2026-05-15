@@ -92,6 +92,7 @@ class Service:
         self.new_nfc_uids_path = new_nfc_uids_path
         self.access_log_path = access_log_path
         self.homekey_user_names_path = homekey_user_names_path
+        # Empty/None unlock command falls back to legacy on_known command for compatibility.
         self.on_unlock_shell_command = (
             on_unlock_shell_command
             if on_unlock_shell_command not in (None, "")
@@ -135,6 +136,7 @@ class Service:
         self._nfc_uids_lock = Lock()
         # Small bounded pool prevents unbounded thread creation if many tags are read quickly;
         # waiting on process exits is lightweight and 2 workers is sufficient here.
+        # It is shut down in stop() with wait=False to avoid blocking shutdown on long scripts.
         self._shell_command_monitor_pool = ThreadPoolExecutor(
             max_workers=2, thread_name_prefix="shell-command-monitor"
         )
@@ -863,8 +865,8 @@ class Service:
     def stop(self):
         self._run_flag = False
         self._stop_home_assistant_api()
-        # Don't block shutdown on long-running commands; monitor tasks can finish in background.
-        self._shell_command_monitor_pool.shutdown(wait=False, cancel_futures=False)
+        # Don't block shutdown on long-running commands; queued monitor tasks are canceled.
+        self._shell_command_monitor_pool.shutdown(wait=False, cancel_futures=True)
         if self._runner is not None:
             self._runner.join()
 

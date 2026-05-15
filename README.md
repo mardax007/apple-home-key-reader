@@ -100,7 +100,7 @@ Configuration is done via a JSON file `configuration.json`, with the following 4
   * `new_uids_file`: json file where newly seen unknown regular NFC UID values are saved in `{"uids": [...]}` format;
   * `access_log_file`: jsonl file where every known/unknown NFC read and Home Key authentication event is appended;
   * `on_unlock_shell_command`: shell command to run whenever the lock is unlocked (home key authentication, known regular NFC UID, or Home app unlock);
-  * `on_known_shell_command`: shell command used by `POST /ha/run-known-shell-command`.  
+  * `on_known_shell_command`: shell command used by Home Assistant integration endpoint `POST /ha/run-known-shell-command`.  
     If `on_unlock_shell_command` is empty, this value is also used for unlock events for backward compatibility;
   * `on_unknown_shell_command`: shell command to run when an unknown regular NFC UID is read (after storing it in `new_uids_file`);
 * `hap`: configuration of the HAP-python library, better left unchanged;

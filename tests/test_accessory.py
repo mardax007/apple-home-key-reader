@@ -11,11 +11,11 @@ class FakeCharacteristic:
 
 class FakeService:
     def __init__(self, command="unlock-cmd"):
-        self.on_known_nfc_shell_command = command
+        self.on_unlock_shell_command = command
         self.calls = []
 
     def run_unlock_shell_command(self, reason):
-        command = self.on_known_nfc_shell_command
+        command = self.on_unlock_shell_command
         self.calls.append((command, reason))
 
 

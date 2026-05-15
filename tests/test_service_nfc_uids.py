@@ -288,18 +288,15 @@ def test_run_shell_command_logs_failure_on_non_zero_exit(monkeypatch):
         def wait():
             return 7
 
-    class ImmediateThread:
-        def __init__(self, target=None, args=(), **kwargs):
-            self.target = target
-            self.args = args
-
-        def start(self):
-            self.target(*self.args)
+    class ImmediateExecutor:
+        @staticmethod
+        def submit(target, *args, **kwargs):
+            target(*args)
 
     errors = []
 
     monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
-    monkeypatch.setattr(service_module, "Thread", ImmediateThread)
+    service._shell_command_monitor_pool = ImmediateExecutor()
     monkeypatch.setattr(service_module.log, "error", lambda msg: errors.append(msg))
 
     assert service._run_shell_command("echo hello", "test") is True

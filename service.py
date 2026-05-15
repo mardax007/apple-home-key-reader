@@ -9,6 +9,7 @@ import shutil
 import socket
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
 from operator import attrgetter
 from threading import Lock, Thread
 from zeroconf import ServiceInfo, Zeroconf
@@ -132,6 +133,9 @@ class Service:
         self._home_assistant_zeroconf = None
         self._home_assistant_service_info = None
         self._nfc_uids_lock = Lock()
+        self._shell_command_monitor_pool = ThreadPoolExecutor(
+            max_workers=2, thread_name_prefix="shell-command-monitor"
+        )
 
     def on_endpoint_authenticated(self, endpoint):
         """This method will be called when an endpoint is authenticated"""
@@ -408,11 +412,14 @@ class Service:
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
-            Thread(
-                target=self._wait_for_shell_command_exit,
-                args=(process, reason, command_args),
-                daemon=True,
-            ).start()
+            try:
+                self._shell_command_monitor_pool.submit(
+                    self._wait_for_shell_command_exit, process, reason, command_args
+                )
+            except Exception:
+                log.exception(
+                    f'Could not start shell command monitor for "{reason}" event: {command_args}'
+                )
             return True
         except Exception:
             log.exception(
@@ -854,6 +861,7 @@ class Service:
     def stop(self):
         self._run_flag = False
         self._stop_home_assistant_api()
+        self._shell_command_monitor_pool.shutdown(wait=False, cancel_futures=False)
         if self._runner is not None:
             self._runner.join()
 

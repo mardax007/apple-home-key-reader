@@ -304,6 +304,50 @@ def test_run_shell_command_logs_failure_on_non_zero_exit(monkeypatch):
     assert 'Shell command for "test" event failed with exit code 7' in errors[0]
 
 
+def test_run_shell_command_uses_working_directory(monkeypatch, tmp_path):
+    service = Service(
+        FakeCLF(),
+        FakeRepository(),
+        shell_command_working_directory=str(tmp_path),
+    )
+
+    class FakeProcess:
+        @staticmethod
+        def wait():
+            return 0
+
+    captured = {}
+
+    def fake_popen(*args, **kwargs):
+        captured["kwargs"] = kwargs
+        return FakeProcess()
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    assert service._run_shell_command("echo hello", "test") is True
+    assert captured["kwargs"]["cwd"] == str(tmp_path)
+
+
+def test_run_shell_command_with_response_uses_working_directory(monkeypatch, tmp_path):
+    service = Service(
+        FakeCLF(),
+        FakeRepository(),
+        shell_command_working_directory=str(tmp_path),
+    )
+    captured = {}
+
+    def fake_run(*args, **kwargs):
+        captured["kwargs"] = kwargs
+        return subprocess.CompletedProcess(
+            args=["echo", "hello"], returncode=0, stdout="hello\n", stderr=""
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    result = service._run_shell_command_with_response("echo hello", "test")
+    assert result["ok"] is True
+    assert captured["kwargs"]["cwd"] == str(tmp_path)
+
+
 def test_list_known_and_unknown_nfc_uids(tmp_path):
     known_file = tmp_path / "known.json"
     known_file.write_text(

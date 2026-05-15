@@ -58,12 +58,27 @@ class Service:
     )
 
     @staticmethod
-    def _parse_bool(value):
+    def _parse_bool(value, default=False):
         if isinstance(value, bool):
             return value
         if value is None:
-            return False
-        return str(value).strip().lower() in ("1", "true", "yes", "on")
+            return default
+        value = str(value).strip().lower()
+        if value == "":
+            return default
+        return value in ("1", "true", "yes", "on")
+
+    @staticmethod
+    def _normalize_shell_command_value(command):
+        if command is None:
+            return None
+        if isinstance(command, str):
+            command = command.strip()
+            return command if command else None
+        if isinstance(command, list):
+            command = [str(item).strip() for item in command if str(item).strip()]
+            return command if command else None
+        return command
 
     def __init__(
         self,
@@ -91,19 +106,26 @@ class Service:
         self.repository = repository
         self.clf = clf
         self.throttle_polling = throttle_polling
-        self.express = self._parse_bool(express)
+        self.express = self._parse_bool(express, default=True)
         self.known_nfc_uids_path = known_nfc_uids_path
         self.new_nfc_uids_path = new_nfc_uids_path
         self.access_log_path = access_log_path
         self.homekey_user_names_path = homekey_user_names_path
         # Empty/None unlock command falls back to legacy on_known command for compatibility.
-        self.on_unlock_shell_command = (
+        normalized_unlock_command = self._normalize_shell_command_value(
             on_unlock_shell_command
-            if on_unlock_shell_command not in (None, "")
-            else on_known_nfc_shell_command
         )
-        self.on_known_nfc_shell_command = on_known_nfc_shell_command
-        self.on_unknown_nfc_shell_command = on_unknown_nfc_shell_command
+        self.on_known_nfc_shell_command = self._normalize_shell_command_value(
+            on_known_nfc_shell_command
+        )
+        self.on_unknown_nfc_shell_command = self._normalize_shell_command_value(
+            on_unknown_nfc_shell_command
+        )
+        self.on_unlock_shell_command = (
+            normalized_unlock_command
+            if normalized_unlock_command is not None
+            else self.on_known_nfc_shell_command
+        )
         self.home_assistant_enabled = self._parse_bool(home_assistant_enabled)
         self.home_assistant_host = home_assistant_host
         self.home_assistant_port = int(home_assistant_port)

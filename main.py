@@ -87,6 +87,27 @@ def configure_homekey_service(config: dict, nfc_device, repository=None, nfc_con
     return service
 
 
+def create_shutdown_handler(log, homekey_service, hap_driver):
+    shutdown_started = False
+
+    def handle_signal(signum, _frame):
+        nonlocal shutdown_started
+        if shutdown_started:
+            log.info(f"SIGNAL {signum} ignored (shutdown already in progress)")
+            return
+        shutdown_started = True
+        log.info(f"SIGNAL {signum}")
+        homekey_service.stop()
+        hap_driver.stop()
+
+    return handle_signal
+
+
+def register_shutdown_signals(handler):
+    for s in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(s, handler)
+
+
 def main():
     config = load_configuration()
     log = configure_logging(config["logging"])
@@ -98,16 +119,9 @@ def main():
         nfc_config=config.get("nfc", {}),
     )
     hap_driver, _ = configure_hap_accessory(config["hap"], homekey_service)
-
-    for s in (signal.SIGINT, signal.SIGTERM):
-        signal.signal(
-            s,
-            lambda *_: (
-                log.info(f"SIGNAL {s}"),
-                homekey_service.stop(),
-                hap_driver.stop(),
-            ),
-        )
+    register_shutdown_signals(
+        create_shutdown_handler(log, homekey_service, hap_driver)
+    )
 
     homekey_service.start()
     hap_driver.start()

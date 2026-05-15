@@ -184,6 +184,24 @@ def test_remote_shell_command_disabled():
     assert service_disabled._is_remote_shell_command_allowed(["echo", "hello"]) is False
 
 
+def test_express_is_true_when_unset_or_empty():
+    service_none = Service(FakeCLF(), FakeRepository(), express=None)
+    service_empty = Service(FakeCLF(), FakeRepository(), express="")
+
+    assert service_none.express is True
+    assert service_empty.express is True
+
+
+def test_express_parsing_still_honors_explicit_false_values():
+    service_false_bool = Service(FakeCLF(), FakeRepository(), express=False)
+    service_false_str = Service(FakeCLF(), FakeRepository(), express="false")
+    service_zero_str = Service(FakeCLF(), FakeRepository(), express="0")
+
+    assert service_false_bool.express is False
+    assert service_false_str.express is False
+    assert service_zero_str.express is False
+
+
 def test_remote_shell_command_allow_all():
     service_allow_all = Service(
         FakeCLF(),
@@ -246,6 +264,28 @@ def test_run_unlock_shell_command_prefers_unlock_command_and_falls_back(monkeypa
     assert service_with_unlock.run_unlock_shell_command("unlock") is True
     assert service_with_fallback.run_unlock_shell_command("fallback") is True
     assert calls == [("unlock-cmd", "unlock"), ("known-cmd", "fallback")]
+
+
+def test_run_unlock_shell_command_falls_back_when_unlock_command_is_whitespace(
+    monkeypatch,
+):
+    service = Service(
+        FakeCLF(),
+        FakeRepository(),
+        on_unlock_shell_command="   ",
+        on_known_nfc_shell_command="known-cmd",
+    )
+
+    calls = []
+
+    def fake_run(command, reason):
+        calls.append((command, reason))
+        return True
+
+    monkeypatch.setattr(service, "_run_shell_command", fake_run)
+
+    assert service.run_unlock_shell_command("homekey-authenticated") is True
+    assert calls == [("known-cmd", "homekey-authenticated")]
 
 
 def test_run_shell_command_with_response_captures_output(monkeypatch):

@@ -395,19 +395,37 @@ class Service:
             command_args = self._prepare_shell_command_args(command)
             if not command_args:
                 return False
-            subprocess.Popen(
+            process = subprocess.Popen(
                 command_args,
                 shell=False,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
+            Thread(
+                target=self._wait_for_shell_command_exit,
+                args=(process, reason, command_args),
+                daemon=True,
+            ).start()
             return True
         except Exception:
             log.exception(
                 f'Could not run shell command for "{reason}" event: {command}'
             )
             return False
+
+    @staticmethod
+    def _wait_for_shell_command_exit(process, reason, command_args):
+        try:
+            returncode = process.wait()
+            if returncode != 0:
+                log.error(
+                    f'Shell command for "{reason}" event failed with exit code {returncode}: {command_args}'
+                )
+        except Exception:
+            log.exception(
+                f'Could not monitor shell command for "{reason}" event: {command_args}'
+            )
 
     @staticmethod
     def _prepare_shell_command_args(command):

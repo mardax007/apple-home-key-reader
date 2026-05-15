@@ -253,6 +253,33 @@ def test_run_shell_command_with_response_timeout(monkeypatch):
     assert result["command"] == ["echo", "hello"]
 
 
+def test_run_shell_command_logs_failure_on_non_zero_exit(monkeypatch):
+    service = Service(FakeCLF(), FakeRepository())
+
+    class FakeProcess:
+        @staticmethod
+        def wait():
+            return 7
+
+    class ImmediateThread:
+        def __init__(self, target=None, args=(), **kwargs):
+            self.target = target
+            self.args = args
+
+        def start(self):
+            self.target(*self.args)
+
+    errors = []
+
+    monkeypatch.setattr(subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
+    monkeypatch.setattr(service_module, "Thread", ImmediateThread)
+    monkeypatch.setattr(service_module.log, "error", lambda msg: errors.append(msg))
+
+    assert service._run_shell_command("echo hello", "test") is True
+    assert len(errors) == 1
+    assert 'Shell command for "test" event failed with exit code 7' in errors[0]
+
+
 def test_list_known_and_unknown_nfc_uids(tmp_path):
     known_file = tmp_path / "known.json"
     known_file.write_text(

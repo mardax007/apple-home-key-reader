@@ -104,7 +104,7 @@ Configuration is done via a JSON file `configuration.json`, with the following 4
     If `on_unlock_shell_command` is empty, this value is also used for unlock events for backward compatibility;
   * `on_unknown_shell_command`: shell command to run when an unknown regular NFC UID is read (after storing it in `new_uids_file`);
   * `shell_command_working_directory`: optional working directory used for all configured shell commands.  
-    Defaults to the project directory (the folder containing `service.py`), so relative script paths like `python script.py` are resolved there;
+    Defaults to the project directory (the folder containing `service.py`), so relative script paths like `scripts/unlock.py` are resolved there;
 * `hap`: configuration of the HAP-python library, better left unchanged;
     * `port`: network port of the virtual accessory;
     * `persist`: file to store HAP-python pairing data in.

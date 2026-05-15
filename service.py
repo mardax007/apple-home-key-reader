@@ -115,9 +115,11 @@ class Service:
         self.home_assistant_shell_command_whitelist = [
             str(item).strip() for item in whitelist if str(item).strip()
         ]
+        if isinstance(shell_command_working_directory, str):
+            shell_command_working_directory = shell_command_working_directory.strip()
         self.shell_command_working_directory = (
             shell_command_working_directory
-            if shell_command_working_directory not in (None, "")
+            if shell_command_working_directory
             else self.DEFAULT_SHELL_COMMAND_WORKING_DIRECTORY
         )
         if (

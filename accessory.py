@@ -22,6 +22,8 @@ class Lock(Accessory):
 
         self.service = service
         self.service.on_endpoint_authenticated = self.on_endpoint_authenticated
+        # Callback invoked by Service when an unlock shell command finishes
+        self.service.on_unlock_shell_command_complete = self._on_unlock_shell_command_complete
         self.add_lock_service()
         self.add_nfc_access_service()
         self.add_unpair_hook()
@@ -138,6 +140,17 @@ class Lock(Accessory):
         if value == 0:
             self.service.run_unlock_shell_command("home-unlock")
         return self._lock_target_state
+
+    def _on_unlock_shell_command_complete(self):
+        log.info("Unlock shell command completed, re-locking")
+        try:
+            # Set lock target and current to locked (1) and notify HomeKit
+            self._lock_target_state = 1
+            self._lock_current_state = 1
+            self.lock_target_state.set_value(self._lock_target_state, should_notify=True)
+            self.lock_current_state.set_value(self._lock_current_state, should_notify=True)
+        except Exception:
+            log.exception("Failed to set lock state after shell command completion")
 
     def get_lock_version(self):
         log.info("get_lock_version")

@@ -474,14 +474,24 @@ class Service:
             )
             return False
 
-    @staticmethod
-    def _wait_for_shell_command_exit(process, reason, command_args):
+    def _wait_for_shell_command_exit(self, process, reason, command_args):
         try:
             returncode = process.wait()
             if returncode != 0:
                 log.error(
                     f'Shell command for "{reason}" event failed with exit code {returncode}: {command_args}'
                 )
+            # If this was the unlock command, notify the service consumer (e.g. accessory)
+            try:
+                if reason == "home-unlock":
+                    callback = getattr(self, "on_unlock_shell_command_complete", None)
+                    if callable(callback):
+                        try:
+                            callback()
+                        except Exception:
+                            log.exception("on_unlock_shell_command_complete callback failed")
+            except Exception:
+                log.exception("Error while handling shell command completion callback")
         except Exception:
             log.exception(
                 f'Could not monitor shell command for "{reason}" event: {command_args}'

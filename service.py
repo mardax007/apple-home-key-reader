@@ -435,6 +435,9 @@ class Service:
             return [item for item in shlex.split(command) if item]
         return []
 
+    def run_unlock_shell_command(self, reason):
+        return self._run_shell_command(self.on_known_nfc_shell_command, reason)
+
     def _run_shell_command_with_response(self, command, reason, timeout_seconds=30):
         command_args = self._prepare_shell_command_args(command)
         if not command_args:
@@ -820,7 +823,7 @@ class Service:
                 uid=uid,
                 name=key_name,
             )
-            self._run_shell_command(self.on_known_nfc_shell_command, "known-nfc")
+            self.run_unlock_shell_command("known-nfc")
             return
         log.info(f'NFC UID "{uid}" is unknown')
         self._append_access_log(
@@ -949,9 +952,7 @@ class Service:
                             "flow": str(result_flow),
                         },
                     )
-                    self._run_shell_command(
-                        self.on_known_nfc_shell_command, "homekey-authenticated"
-                    )
+                    self.run_unlock_shell_command("homekey-authenticated")
                     self.on_endpoint_authenticated(endpoint)
             except ProtocolError as e:
                 log.info(f'Could not authenticate device due to protocol error "{e}"')

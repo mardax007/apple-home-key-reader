@@ -14,12 +14,17 @@ class FakeService:
         self.on_known_nfc_shell_command = command
         self.calls = []
 
-    def _run_shell_command(self, command, reason):
+    def run_unlock_shell_command(self, reason):
+        command = self.on_known_nfc_shell_command
         self.calls.append((command, reason))
 
 
+class FakeLock:
+    set_lock_target_state = Lock.set_lock_target_state
+
+
 def test_set_lock_target_state_runs_unlock_command_for_home_unlock():
-    lock = Lock.__new__(Lock)
+    lock = FakeLock()
     lock.service = FakeService()
     lock._lock_current_state = 1
     lock._lock_target_state = 1
@@ -33,7 +38,7 @@ def test_set_lock_target_state_runs_unlock_command_for_home_unlock():
 
 
 def test_set_lock_target_state_does_not_run_unlock_command_for_lock():
-    lock = Lock.__new__(Lock)
+    lock = FakeLock()
     lock.service = FakeService()
     lock._lock_current_state = 0
     lock._lock_target_state = 0

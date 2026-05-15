@@ -53,6 +53,9 @@ class Service:
     HTTP_SHUTDOWN_TIMEOUT = 2
     HTTP_SERVER_POLL_INTERVAL = 0.5
     HOME_ASSISTANT_SERVICE_TYPE = "_apple-home-key-reader._tcp.local."
+    DEFAULT_SHELL_COMMAND_WORKING_DIRECTORY = os.path.dirname(
+        os.path.abspath(__file__)
+    )
 
     @staticmethod
     def _parse_bool(value):
@@ -112,13 +115,10 @@ class Service:
         self.home_assistant_shell_command_whitelist = [
             str(item).strip() for item in whitelist if str(item).strip()
         ]
-        default_shell_command_working_directory = os.path.dirname(
-            os.path.abspath(__file__)
-        )
         self.shell_command_working_directory = (
             shell_command_working_directory
             if shell_command_working_directory not in (None, "")
-            else default_shell_command_working_directory
+            else self.DEFAULT_SHELL_COMMAND_WORKING_DIRECTORY
         )
         if (
             self.shell_command_working_directory is not None

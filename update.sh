@@ -60,7 +60,7 @@ do_rollback() {
   if [[ -f "${BACKUP_PATH}/requirements.txt" ]]; then
     log "  Reinstalling original dependencies..."
     PIP_FLAGS=(--quiet)
-    if python3 -m pip install --dry-run -r "${BACKUP_PATH}/requirements.txt" 2>&1 | grep -q "externally-managed-environment"; then
+    if python3 -m pip install --help 2>/dev/null | grep -q "break-system-packages"; then
       PIP_FLAGS+=(--break-system-packages)
     fi
     python3 -m pip install -r "${BACKUP_PATH}/requirements.txt" "${PIP_FLAGS[@]}"
@@ -149,8 +149,8 @@ git pull --ff-only
 log "Updating Python dependencies..."
 PIP_FLAGS=()
 # Newer Debian/Raspberry Pi OS versions enforce PEP 668 (externally managed env).
-# Detect this and pass --break-system-packages so pip works on a dedicated device.
-if python3 -m pip install --dry-run -r requirements.txt 2>&1 | grep -q "externally-managed-environment"; then
+# If pip supports --break-system-packages (pip >= 23.1), use it — safe on a dedicated device.
+if python3 -m pip install --help 2>/dev/null | grep -q "break-system-packages"; then
   PIP_FLAGS+=(--break-system-packages)
 fi
 python3 -m pip install --upgrade "${PIP_FLAGS[@]}" -r requirements.txt

@@ -17,7 +17,7 @@ class AppleHomeKeyReaderApi:
     def __init__(self, hass, config: dict[str, Any]) -> None:
         self._hass = hass
         self._host = config[CONF_HOST]
-        self._port = config[CONF_PORT]
+        self._port = int(config[CONF_PORT])
         self._token = config.get(CONF_TOKEN, "")
         base_path = str(config.get(CONF_BASE_PATH, "/ha") or "/ha").strip()
         self._base_path = base_path if base_path.startswith("/") else f"/{base_path}"

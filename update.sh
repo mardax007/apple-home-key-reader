@@ -135,6 +135,11 @@ trap 'prompt_rollback' ERR
 # Update code and dependencies
 # ---------------------------------------------------------------------------
 log "Pulling latest changes from git..."
+# If in detached HEAD state, reattach to main before pulling
+if ! git symbolic-ref --quiet HEAD >/dev/null 2>&1; then
+  log "Detached HEAD detected — checking out main branch..."
+  git checkout main
+fi
 git pull --ff-only
 
 log "Updating Python dependencies..."

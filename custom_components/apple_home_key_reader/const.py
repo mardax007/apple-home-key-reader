@@ -5,6 +5,7 @@ DEFAULT_TIMEOUT_SECONDS = 10
 CONF_TOKEN = "token"
 CONF_BASE_PATH = "base_path"
 
+SERVICE_UNLOCK = "unlock"
 SERVICE_RUN_KNOWN_SHELL_COMMAND = "run_known_shell_command"
 SERVICE_ADD_KNOWN_UID = "add_known_uid"
 SERVICE_REMOVE_KNOWN_UID = "remove_known_uid"

@@ -15,6 +15,10 @@
     },
     "error": {
       "cannot_connect": "Failed to connect to the Apple Home Key Reader API."
+    },
+    "abort": {
+      "already_configured": "This device is already configured.",
+      "cannot_connect": "Failed to connect."
     }
   }
 }

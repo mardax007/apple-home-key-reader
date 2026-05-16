@@ -23,6 +23,8 @@ class AppleHomeKeyReaderConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._name: str | None = None
 
     def is_matching(self, other_flow: object) -> bool:
+        if self._host is None:
+            return False
         other_host = getattr(other_flow, "_host", None)
         other_port = getattr(other_flow, "_port", None)
         return self._host == other_host and self._port == other_port
@@ -69,7 +71,7 @@ class AppleHomeKeyReaderConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._port = port
             self._name = user_input.get(CONF_NAME, name_default)
 
-            await self.async_set_unique_id(f"{host}:{port}")
+            await self.async_set_unique_id(f"{host}:{port}", raise_on_progress=False)
             self._abort_if_unique_id_configured(
                 updates={CONF_HOST: host, CONF_PORT: port}
             )

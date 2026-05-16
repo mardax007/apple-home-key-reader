@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -19,7 +20,13 @@ from .const import (
     SERVICE_REMOVE_UNKNOWN_UID,
     SERVICE_RUN_KNOWN_SHELL_COMMAND,
     SERVICE_RUN_SHELL_COMMAND,
+    SERVICE_UNLOCK,
 )
+from .coordinator import AppleHomeKeyReaderCoordinator
+
+_LOGGER = logging.getLogger(__name__)
+
+PLATFORMS = ["select", "button"]
 
 CONF_ENTRY_ID = "entry_id"
 CONF_COMMAND = "command"
@@ -32,6 +39,7 @@ DATA_REGISTERED = "registered"
 async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN].setdefault(DATA_APIS, {})
+    hass.data[DOMAIN].setdefault("entries", {})
     if hass.data[DOMAIN].get(DATA_REGISTERED):
         return True
 
@@ -74,11 +82,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         try:
             if method_name == "add_known_uid":
                 return await method(call.data[CONF_UID], call.data.get(CONF_NAME))
-            elif method_name in (
-                "remove_known_uid",
-                "add_unknown_uid",
-                "remove_unknown_uid",
-            ):
+            elif method_name in ("remove_known_uid", "add_unknown_uid", "remove_unknown_uid"):
                 return await method(call.data[CONF_UID])
             elif method_name == "run_shell_command":
                 return await method(call.data[CONF_COMMAND])
@@ -86,6 +90,9 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 return await method()
         except AppleHomeKeyReaderError as exc:
             raise HomeAssistantError(str(exc)) from exc
+
+    async def _unlock(call: ServiceCall):
+        return await _call_api(call, "unlock")
 
     async def _run_known_shell_command(call: ServiceCall):
         return await _call_api(call, "run_known_shell_command")
@@ -111,6 +118,13 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async def _list_unknown_uids(call: ServiceCall):
         return await _call_api(call, "list_unknown_uids")
 
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_UNLOCK,
+        _unlock,
+        schema=base_schema,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
     hass.services.async_register(
         DOMAIN,
         SERVICE_RUN_KNOWN_SHELL_COMMAND,
@@ -173,22 +187,50 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await async_setup(hass, {})
-    hass.data[DOMAIN][DATA_APIS][entry.entry_id] = AppleHomeKeyReaderApi(
-        hass, entry.data
-    )
+
+    api = AppleHomeKeyReaderApi(hass, entry.data)
+    coordinator = AppleHomeKeyReaderCoordinator(hass, api)
+
+    try:
+        await coordinator.async_config_entry_first_refresh()
+    except Exception:
+        _LOGGER.debug(
+            "Initial UID list fetch failed for entry %s; will retry on next poll",
+            entry.entry_id,
+        )
+
+    entry_data = {
+        "api": api,
+        "coordinator": coordinator,
+        "selection": {"new_uid": None, "known_uid": None},
+    }
+    hass.data[DOMAIN]["entries"][entry.entry_id] = entry_data
+    hass.data[DOMAIN][DATA_APIS][entry.entry_id] = api
+
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if not unloaded:
+        return False
+
+    hass.data[DOMAIN]["entries"].pop(entry.entry_id, None)
     hass.data[DOMAIN][DATA_APIS].pop(entry.entry_id, None)
+
     if not hass.data[DOMAIN][DATA_APIS] and hass.data[DOMAIN].get(DATA_REGISTERED):
-        hass.services.async_remove(DOMAIN, SERVICE_RUN_KNOWN_SHELL_COMMAND)
-        hass.services.async_remove(DOMAIN, SERVICE_ADD_KNOWN_UID)
-        hass.services.async_remove(DOMAIN, SERVICE_REMOVE_KNOWN_UID)
-        hass.services.async_remove(DOMAIN, SERVICE_ADD_UNKNOWN_UID)
-        hass.services.async_remove(DOMAIN, SERVICE_REMOVE_UNKNOWN_UID)
-        hass.services.async_remove(DOMAIN, SERVICE_RUN_SHELL_COMMAND)
-        hass.services.async_remove(DOMAIN, SERVICE_LIST_KNOWN_UIDS)
-        hass.services.async_remove(DOMAIN, SERVICE_LIST_UNKNOWN_UIDS)
+        for svc in (
+            SERVICE_UNLOCK,
+            SERVICE_RUN_KNOWN_SHELL_COMMAND,
+            SERVICE_ADD_KNOWN_UID,
+            SERVICE_REMOVE_KNOWN_UID,
+            SERVICE_ADD_UNKNOWN_UID,
+            SERVICE_REMOVE_UNKNOWN_UID,
+            SERVICE_RUN_SHELL_COMMAND,
+            SERVICE_LIST_KNOWN_UIDS,
+            SERVICE_LIST_UNKNOWN_UIDS,
+        ):
+            hass.services.async_remove(DOMAIN, svc)
         hass.data[DOMAIN][DATA_REGISTERED] = False
     return True

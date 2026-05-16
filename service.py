@@ -652,6 +652,9 @@ class Service:
                         self, 400, {"ok": False, "error": "invalid-json"}
                     )
                 path = self.path
+                if path == "/ha/unlock":
+                    service.run_unlock_shell_command("home-assistant-button")
+                    return service._write_home_assistant_response(self, 200, {"ok": True})
                 if path == "/ha/run-known-shell-command":
                     result = service._run_shell_command_with_response(
                         service.on_known_nfc_shell_command,

@@ -138,7 +138,12 @@ class Lock(Accessory):
         self._lock_target_state = self._lock_current_state = value
         self.lock_current_state.set_value(self._lock_current_state, should_notify=True)
         if value == 0:
-            self.service.run_unlock_shell_command("home-unlock")
+            self.service.run_unlock_shell_command(
+                "home-unlock",
+                actor="home-app",
+                actor_type="homekit-client",
+                source="homekit",
+            )
         return self._lock_target_state
 
     def _on_unlock_shell_command_complete(self):

@@ -505,8 +505,25 @@ class Service:
             return [item for item in shlex.split(command) if item]
         return []
 
-    def run_unlock_shell_command(self, reason):
-        return self._run_shell_command(self.on_unlock_shell_command, reason)
+    def run_unlock_shell_command(
+        self, reason, uid=None, name=None, actor=None, actor_type=None, source="unlock", details=None
+    ):
+        command_started = self._run_shell_command(self.on_unlock_shell_command, reason)
+        unlock_details = dict(details or {})
+        unlock_details["reason"] = reason
+        unlock_details["command_started"] = command_started
+        if actor is not None:
+            unlock_details["actor"] = actor
+        if actor_type is not None:
+            unlock_details["actor_type"] = actor_type
+        self._append_access_log(
+            event_type="door_unlocked",
+            source=source,
+            uid=uid,
+            name=name,
+            details=unlock_details,
+        )
+        return command_started
 
     def _run_shell_command_with_response(self, command, reason, timeout_seconds=30):
         command_args = self._prepare_shell_command_args(command)
@@ -653,7 +670,12 @@ class Service:
                     )
                 path = self.path
                 if path == "/ha/unlock":
-                    service.run_unlock_shell_command("home-assistant-button")
+                    service.run_unlock_shell_command(
+                        "home-assistant-button",
+                        actor="home-assistant",
+                        actor_type="integration",
+                        source="home-assistant",
+                    )
                     return service._write_home_assistant_response(self, 200, {"ok": True})
                 if path == "/ha/run-known-shell-command":
                     result = service._run_shell_command_with_response(
@@ -897,7 +919,14 @@ class Service:
                 uid=uid,
                 name=key_name,
             )
-            self.run_unlock_shell_command("known-nfc")
+            self.run_unlock_shell_command(
+                "known-nfc",
+                uid=uid,
+                name=key_name,
+                actor=key_name if key_name is not None else uid,
+                actor_type="nfc-uid",
+                source="nfc",
+            )
             return
         log.info(f'NFC UID "{uid}" is unknown')
         self._append_access_log(
@@ -1028,7 +1057,22 @@ class Service:
                             "flow": str(result_flow),
                         },
                     )
-                    self.run_unlock_shell_command("homekey-authenticated")
+                    self.run_unlock_shell_command(
+                        "homekey-authenticated",
+                        uid=uid,
+                        name=homekey_user_name,
+                        actor=(
+                            homekey_user_name
+                            if homekey_user_name is not None
+                            else f"endpoint:{endpoint_id}"
+                        ),
+                        actor_type="homekey-endpoint",
+                        source="homekey",
+                        details={
+                            "endpoint_id": endpoint_id,
+                            "flow": str(result_flow),
+                        },
+                    )
                     self.on_endpoint_authenticated(endpoint)
             except ProtocolError as e:
                 log.info(f'Could not authenticate device due to protocol error "{e}"')

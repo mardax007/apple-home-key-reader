@@ -112,15 +112,50 @@ def test_access_log_appends_json_lines_with_name(tmp_path):
         known_nfc_uids_path=str(known_file),
         access_log_path=str(access_log),
     )
-    service._run_shell_command = lambda *_: None
+    service._run_shell_command = lambda *_: True
     service._handle_non_homekey_tag("ab:cd")
 
     log_entries = [json.loads(line) for line in access_log.read_text().splitlines()]
-    assert len(log_entries) == 1
+    assert len(log_entries) == 2
     assert log_entries[0]["event_type"] == "nfc_known"
     assert log_entries[0]["uid"] == "ABCD"
     assert log_entries[0]["name"] == "Alice tag"
     assert log_entries[0]["source"] == "nfc"
+    assert log_entries[1]["event_type"] == "door_unlocked"
+    assert log_entries[1]["uid"] == "ABCD"
+    assert log_entries[1]["name"] == "Alice tag"
+    assert log_entries[1]["source"] == "nfc"
+    assert log_entries[1]["details"]["reason"] == "known-nfc"
+    assert log_entries[1]["details"]["actor"] == "Alice tag"
+    assert log_entries[1]["details"]["actor_type"] == "nfc-uid"
+    assert log_entries[1]["details"]["command_started"] is True
+
+
+def test_run_unlock_shell_command_logs_reason_source_and_actor(tmp_path, monkeypatch):
+    access_log = tmp_path / "access.log.jsonl"
+    service = Service(FakeCLF(), FakeRepository(), access_log_path=str(access_log))
+    monkeypatch.setattr(service, "_run_shell_command", lambda *_: True)
+
+    result = service.run_unlock_shell_command(
+        "home-assistant-button",
+        source="home-assistant",
+        actor="home-assistant",
+        actor_type="integration",
+        details={"request_id": "abc123"},
+    )
+
+    assert result is True
+    log_entries = [json.loads(line) for line in access_log.read_text().splitlines()]
+    assert len(log_entries) == 1
+    assert log_entries[0]["event_type"] == "door_unlocked"
+    assert log_entries[0]["source"] == "home-assistant"
+    assert log_entries[0]["details"] == {
+        "request_id": "abc123",
+        "reason": "home-assistant-button",
+        "command_started": True,
+        "actor": "home-assistant",
+        "actor_type": "integration",
+    }
 
 
 def test_homekey_user_name_resolution_by_endpoint_id_and_public_key(tmp_path):
@@ -245,11 +280,13 @@ def test_run_unlock_shell_command_prefers_unlock_command_and_falls_back(monkeypa
         FakeRepository(),
         on_unlock_shell_command="unlock-cmd",
         on_known_nfc_shell_command="known-cmd",
+        access_log_path="",
     )
     service_with_fallback = Service(
         FakeCLF(),
         FakeRepository(),
         on_known_nfc_shell_command="known-cmd",
+        access_log_path="",
     )
 
     calls = []
@@ -274,6 +311,7 @@ def test_run_unlock_shell_command_falls_back_when_unlock_command_is_whitespace(
         FakeRepository(),
         on_unlock_shell_command="   ",
         on_known_nfc_shell_command="known-cmd",
+        access_log_path="",
     )
 
     calls = []

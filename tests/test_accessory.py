@@ -14,9 +14,9 @@ class FakeService:
         self.on_unlock_shell_command = command
         self.calls = []
 
-    def run_unlock_shell_command(self, reason):
+    def run_unlock_shell_command(self, reason, **kwargs):
         command = self.on_unlock_shell_command
-        self.calls.append((command, reason))
+        self.calls.append((command, reason, kwargs))
 
 
 class FakeLock:
@@ -36,7 +36,17 @@ def test_set_lock_target_state_runs_unlock_command_for_home_unlock():
 
     assert result == 0
     assert lock.lock_current_state.values == [(0, True)]
-    assert lock.service.calls == [("unlock-cmd", "home-unlock")]
+    assert lock.service.calls == [
+        (
+            "unlock-cmd",
+            "home-unlock",
+            {
+                "actor": "home-app",
+                "actor_type": "homekit-client",
+                "source": "homekit",
+            },
+        )
+    ]
 
 
 def test_set_lock_target_state_does_not_run_unlock_command_for_lock():

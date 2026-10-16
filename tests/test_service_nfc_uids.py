@@ -67,7 +67,7 @@ def test_handle_non_homekey_tag_routes_known_and_unknown(tmp_path):
 
     called = []
 
-    def fake_run(command, reason):
+    def fake_run(command, reason, **_kwargs):
         called.append((command, reason))
 
     service._run_shell_command = fake_run
@@ -112,7 +112,7 @@ def test_access_log_appends_json_lines_with_name(tmp_path):
         known_nfc_uids_path=str(known_file),
         access_log_path=str(access_log),
     )
-    service._run_shell_command = lambda *_: True
+    service._run_shell_command = lambda *_, **__: True
     service._handle_non_homekey_tag("ab:cd")
 
     log_entries = [json.loads(line) for line in access_log.read_text().splitlines()]
@@ -134,7 +134,7 @@ def test_access_log_appends_json_lines_with_name(tmp_path):
 def test_run_unlock_shell_command_logs_reason_source_and_actor(tmp_path, monkeypatch):
     access_log = tmp_path / "access.log.jsonl"
     service = Service(FakeCLF(), FakeRepository(), access_log_path=str(access_log))
-    monkeypatch.setattr(service, "_run_shell_command", lambda *_: True)
+    monkeypatch.setattr(service, "_run_shell_command", lambda *_, **__: True)
 
     result = service.run_unlock_shell_command(
         "home-assistant-button",
@@ -291,7 +291,7 @@ def test_run_unlock_shell_command_prefers_unlock_command_and_falls_back(monkeypa
 
     calls = []
 
-    def fake_run(command, reason):
+    def fake_run(command, reason, **_kwargs):
         calls.append((command, reason))
         return True
 
@@ -316,7 +316,7 @@ def test_run_unlock_shell_command_falls_back_when_unlock_command_is_whitespace(
 
     calls = []
 
-    def fake_run(command, reason):
+    def fake_run(command, reason, **_kwargs):
         calls.append((command, reason))
         return True
 

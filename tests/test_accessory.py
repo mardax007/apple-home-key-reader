@@ -39,7 +39,6 @@ class FakeLock:
     on_endpoint_authenticated = Lock.on_endpoint_authenticated
     _on_unlock_shell_command_complete = Lock._on_unlock_shell_command_complete
     _set_lock_state = Lock._set_lock_state
-    _capture_lock_target_sender = Lock._capture_lock_target_sender
     _format_client_address = staticmethod(Lock._format_client_address)
 
     def __init__(self, service, current_state):
@@ -89,24 +88,6 @@ def test_set_lock_target_state_logs_homekit_client_address():
     lock.set_lock_target_state(0)
 
     assert lock.service.calls[0][2]["details"] == {"client_address": "192.168.2.30:49152"}
-
-
-def test_capture_lock_target_sender_exposes_address_only_during_write():
-    lock = FakeLock(service=FakeService(), current_state=1)
-    seen = []
-
-    def original_client_update_value(value, sender_client_addr=None):
-        seen.append((value, sender_client_addr, lock._lock_target_sender))
-        return "response"
-
-    lock.lock_target_state.client_update_value = original_client_update_value
-    lock._capture_lock_target_sender()
-
-    result = lock.lock_target_state.client_update_value(0, ("10.0.0.5", 1234))
-
-    assert result == "response"
-    assert seen == [(0, ("10.0.0.5", 1234), ("10.0.0.5", 1234))]
-    assert lock._lock_target_sender is None
 
 
 def test_set_lock_target_state_relocks_when_unlock_was_skipped_and_nothing_runs():

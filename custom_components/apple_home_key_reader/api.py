@@ -109,9 +109,6 @@ class AppleHomeKeyReaderApi:
     async def unlock(self) -> dict:
         return await self.request("POST", f"{self._base_path}/unlock")
 
-    async def run_known_shell_command(self) -> dict:
-        return await self.request("POST", f"{self._base_path}/run-known-shell-command")
-
     async def add_known_uid(self, uid: str, name: str | None = None) -> dict:
         payload = {"uid": uid}
         if name not in (None, ""):
@@ -137,13 +134,6 @@ class AppleHomeKeyReaderApi:
             "POST",
             f"{self._base_path}/nfc/unknown/remove",
             {"uid": uid},
-        )
-
-    async def run_shell_command(self, command: list[str] | str) -> dict:
-        return await self.request(
-            "POST",
-            f"{self._base_path}/shell/run",
-            {"command": command},
         )
 
     async def list_known_uids(self) -> dict:

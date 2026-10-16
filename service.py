@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import shlex
-import shutil
 import signal
 import socket
 import subprocess
@@ -110,8 +109,6 @@ class Service:
         home_assistant_host: str = "0.0.0.0",
         home_assistant_port: int = 9780,
         home_assistant_token: str = None,
-        home_assistant_enable_shell_command: bool = False,
-        home_assistant_shell_command_whitelist=None,
         shell_command_working_directory: str = None,
     ) -> None:
         self.repository = repository
@@ -141,13 +138,6 @@ class Service:
         self.home_assistant_host = home_assistant_host
         self.home_assistant_port = int(home_assistant_port)
         self.home_assistant_token = home_assistant_token
-        self.home_assistant_enable_shell_command = self._parse_bool(
-            home_assistant_enable_shell_command
-        )
-        whitelist = home_assistant_shell_command_whitelist or []
-        self.home_assistant_shell_command_whitelist = [
-            str(item).strip() for item in whitelist if str(item).strip()
-        ]
         if isinstance(shell_command_working_directory, str):
             shell_command_working_directory = shell_command_working_directory.strip()
         self.shell_command_working_directory = (
@@ -663,77 +653,6 @@ class Service:
             if callable(callback):
                 callback()
 
-    def _run_shell_command_with_response(self, command, reason, timeout_seconds=30):
-        command_args = self._prepare_shell_command_args(command)
-        if not command_args:
-            return {
-                "ok": False,
-                "error": "invalid-command",
-                "details": "command must be a non-empty string or argument array",
-            }
-
-        log.info(f'Running shell command for "{reason}" event with response capture')
-        try:
-            result = subprocess.run(
-                command_args,
-                shell=False,
-                cwd=self.shell_command_working_directory,
-                capture_output=True,
-                text=True,
-                timeout=timeout_seconds,
-                check=False,
-            )
-            return {
-                "ok": result.returncode == 0,
-                "command": command_args,
-                "returncode": result.returncode,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-            }
-        except subprocess.TimeoutExpired as exc:
-            return {
-                "ok": False,
-                "command": command_args,
-                "error": "command-timeout",
-                "details": str(exc),
-            }
-        except Exception as exc:
-            log.exception(
-                f'Could not run shell command for "{reason}" event: {command}'
-            )
-            return {
-                "ok": False,
-                "command": command_args,
-                "error": "command-execution-failed",
-                "details": str(exc),
-            }
-
-    def _is_remote_shell_command_allowed(self, command):
-        if not self.home_assistant_enable_shell_command:
-            return False
-        command_args = self._prepare_shell_command_args(command)
-        if not command_args:
-            return False
-        executable = command_args[0]
-        executable_path = (
-            executable if os.path.isabs(executable) else shutil.which(executable)
-        )
-        if executable_path in (None, ""):
-            return False
-        resolved_executable = os.path.realpath(executable_path)
-        if not self.home_assistant_shell_command_whitelist:
-            return True
-
-        for allowed in self.home_assistant_shell_command_whitelist:
-            if "/" in allowed:
-                if resolved_executable == os.path.realpath(allowed):
-                    return True
-                continue
-            allowed_path = shutil.which(allowed)
-            if allowed_path and resolved_executable == os.path.realpath(allowed_path):
-                return True
-        return False
-
     @staticmethod
     def _read_json_body(request):
         try:
@@ -815,12 +734,6 @@ class Service:
                         source="home-assistant",
                     )
                     return service._write_home_assistant_response(self, 200, {"ok": True})
-                if path == "/ha/run-known-shell-command":
-                    result = service._run_shell_command_with_response(
-                        service.on_known_nfc_shell_command,
-                        "home-assistant-known-shell",
-                    )
-                    return service._write_home_assistant_response(self, 200, result)
                 if path == "/ha/nfc/known/add":
                     changed = service.add_known_nfc_uid(
                         payload.get("uid"), payload.get("name")
@@ -843,36 +756,6 @@ class Service:
                     return service._write_home_assistant_response(
                         self, 200, {"ok": True, "changed": changed}
                     )
-                if path == "/ha/shell/run":
-                    command = payload.get("command")
-                    if not service.home_assistant_enable_shell_command:
-                        return service._write_home_assistant_response(
-                            self,
-                            403,
-                            {"ok": False, "error": "remote-shell-command-disabled"},
-                        )
-                    command_args = service._prepare_shell_command_args(command)
-                    if not command_args:
-                        return service._write_home_assistant_response(
-                            self,
-                            400,
-                            {
-                                "ok": False,
-                                "error": "invalid-command",
-                                "details": (
-                                    "command must be a non-empty string "
-                                    "or JSON array of arguments"
-                                ),
-                            },
-                        )
-                    if not service._is_remote_shell_command_allowed(command):
-                        return service._write_home_assistant_response(
-                            self, 403, {"ok": False, "error": "command-not-allowed"}
-                        )
-                    result = service._run_shell_command_with_response(
-                        command_args, "home-assistant-remote-shell"
-                    )
-                    return service._write_home_assistant_response(self, 200, result)
                 return service._write_home_assistant_response(
                     self, 404, {"ok": False, "error": "not-found"}
                 )
@@ -885,13 +768,6 @@ class Service:
         if self.home_assistant_token in (None, ""):
             log.warning(
                 "Home Assistant API is enabled without a token; requests will be unauthenticated"
-            )
-        if (
-            self.home_assistant_enable_shell_command
-            and not self.home_assistant_shell_command_whitelist
-        ):
-            log.warning(
-                "Home Assistant remote shell command feature is enabled with an empty whitelist; all commands are allowed"
             )
         try:
             handler_cls = self._build_home_assistant_handler()

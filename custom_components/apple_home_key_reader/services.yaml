@@ -8,16 +8,6 @@ unlock:
       selector:
         text:
 
-run_known_shell_command:
-  name: Run known shell command
-  description: Run the configured on_known_shell_command on the Raspberry Pi. When called with a response variable, returns ok/command/returncode/stdout/stderr.
-  fields:
-    entry_id:
-      name: Entry ID
-      description: Optional config entry ID. If omitted, first configured entry is used.
-      selector:
-        text:
-
 add_known_uid:
   name: Add known NFC UID
   description: Add a known NFC UID with optional name.
@@ -75,22 +65,6 @@ remove_unknown_uid:
     uid:
       required: true
       name: UID
-      selector:
-        text:
-    entry_id:
-      required: false
-      name: Entry ID
-      selector:
-        text:
-
-run_shell_command:
-  name: Run shell command
-  description: Run a shell command on the Raspberry Pi. When called with a response variable, returns ok/command/returncode/stdout/stderr.
-  fields:
-    command:
-      required: true
-      name: Command
-      description: Command as string or list, e.g. "echo hello" or ["echo", "hello"]
       selector:
         text:
     entry_id:

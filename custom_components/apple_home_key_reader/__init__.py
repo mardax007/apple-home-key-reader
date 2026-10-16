@@ -18,8 +18,6 @@ from .const import (
     SERVICE_LIST_UNKNOWN_UIDS,
     SERVICE_REMOVE_KNOWN_UID,
     SERVICE_REMOVE_UNKNOWN_UID,
-    SERVICE_RUN_KNOWN_SHELL_COMMAND,
-    SERVICE_RUN_SHELL_COMMAND,
     SERVICE_UNLOCK,
 )
 from .coordinator import AppleHomeKeyReaderCoordinator
@@ -29,7 +27,6 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS = ["select", "button"]
 
 CONF_ENTRY_ID = "entry_id"
-CONF_COMMAND = "command"
 CONF_UID = "uid"
 
 DATA_APIS = "apis"
@@ -57,12 +54,6 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             vol.Optional(CONF_ENTRY_ID): str,
         }
     )
-    shell_schema = vol.Schema(
-        {
-            vol.Required(CONF_COMMAND): vol.Any(str, [str]),
-            vol.Optional(CONF_ENTRY_ID): str,
-        }
-    )
 
     async def _resolve_api(call: ServiceCall) -> AppleHomeKeyReaderApi:
         apis = hass.data[DOMAIN][DATA_APIS]
@@ -84,8 +75,6 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
                 return await method(call.data[CONF_UID], call.data.get(CONF_NAME))
             elif method_name in ("remove_known_uid", "add_unknown_uid", "remove_unknown_uid"):
                 return await method(call.data[CONF_UID])
-            elif method_name == "run_shell_command":
-                return await method(call.data[CONF_COMMAND])
             else:
                 return await method()
         except AppleHomeKeyReaderError as exc:
@@ -93,9 +82,6 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
     async def _unlock(call: ServiceCall):
         return await _call_api(call, "unlock")
-
-    async def _run_known_shell_command(call: ServiceCall):
-        return await _call_api(call, "run_known_shell_command")
 
     async def _add_known_uid(call: ServiceCall):
         return await _call_api(call, "add_known_uid")
@@ -109,9 +95,6 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async def _remove_unknown_uid(call: ServiceCall):
         return await _call_api(call, "remove_unknown_uid")
 
-    async def _run_shell_command(call: ServiceCall):
-        return await _call_api(call, "run_shell_command")
-
     async def _list_known_uids(call: ServiceCall):
         return await _call_api(call, "list_known_uids")
 
@@ -122,13 +105,6 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         DOMAIN,
         SERVICE_UNLOCK,
         _unlock,
-        schema=base_schema,
-        supports_response=SupportsResponse.OPTIONAL,
-    )
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_RUN_KNOWN_SHELL_COMMAND,
-        _run_known_shell_command,
         schema=base_schema,
         supports_response=SupportsResponse.OPTIONAL,
     )
@@ -158,13 +134,6 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
         SERVICE_REMOVE_UNKNOWN_UID,
         _remove_unknown_uid,
         schema=uid_remove_schema,
-        supports_response=SupportsResponse.OPTIONAL,
-    )
-    hass.services.async_register(
-        DOMAIN,
-        SERVICE_RUN_SHELL_COMMAND,
-        _run_shell_command,
-        schema=shell_schema,
         supports_response=SupportsResponse.OPTIONAL,
     )
     hass.services.async_register(
@@ -222,12 +191,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not hass.data[DOMAIN][DATA_APIS] and hass.data[DOMAIN].get(DATA_REGISTERED):
         for svc in (
             SERVICE_UNLOCK,
-            SERVICE_RUN_KNOWN_SHELL_COMMAND,
             SERVICE_ADD_KNOWN_UID,
             SERVICE_REMOVE_KNOWN_UID,
             SERVICE_ADD_UNKNOWN_UID,
             SERVICE_REMOVE_UNKNOWN_UID,
-            SERVICE_RUN_SHELL_COMMAND,
             SERVICE_LIST_KNOWN_UIDS,
             SERVICE_LIST_UNKNOWN_UIDS,
         ):

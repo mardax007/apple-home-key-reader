@@ -31,9 +31,7 @@
             "enabled": true,
             "host": "0.0.0.0",
             "port": 9780,
-            "token": "",
-            "enable_shell_command": true,
-            "shell_command_whitelist": []
+            "token": ""
         }
     }
 }

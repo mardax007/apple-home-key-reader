@@ -209,16 +209,6 @@ def test_add_and_remove_unknown_uid_via_management_helpers(tmp_path):
     assert content == {"uids": ["CCDD"]}
 
 
-def test_remote_shell_command_disabled():
-    service_disabled = Service(
-        FakeCLF(),
-        FakeRepository(),
-        home_assistant_enable_shell_command=False,
-        home_assistant_shell_command_whitelist=[],
-    )
-    assert service_disabled._is_remote_shell_command_allowed(["echo", "hello"]) is False
-
-
 def test_express_is_true_when_unset_or_empty():
     service_none = Service(FakeCLF(), FakeRepository(), express=None)
     service_empty = Service(FakeCLF(), FakeRepository(), express="")
@@ -235,34 +225,6 @@ def test_express_parsing_still_honors_explicit_false_values():
     assert service_false_bool.express is False
     assert service_false_str.express is False
     assert service_zero_str.express is False
-
-
-def test_remote_shell_command_allow_all():
-    service_allow_all = Service(
-        FakeCLF(),
-        FakeRepository(),
-        home_assistant_enable_shell_command=True,
-        home_assistant_shell_command_whitelist=[],
-    )
-    assert service_allow_all._is_remote_shell_command_allowed(["echo", "hello"]) is True
-    assert service_allow_all._is_remote_shell_command_allowed(["/bin/date"]) is True
-
-
-def test_remote_shell_command_whitelist():
-    service_whitelist = Service(
-        FakeCLF(),
-        FakeRepository(),
-        home_assistant_enable_shell_command=True,
-        home_assistant_shell_command_whitelist=["echo", "/usr/bin/python3"],
-    )
-    assert service_whitelist._is_remote_shell_command_allowed(["echo", "hello"]) is True
-    assert service_whitelist._is_remote_shell_command_allowed(
-        ["/usr/bin/python3", "--version"]
-    ) is True
-    assert service_whitelist._is_remote_shell_command_allowed(["date"]) is False
-    assert service_whitelist._is_remote_shell_command_allowed(
-        ["/tmp/echo", "hello"]
-    ) is False
 
 
 def test_prepare_shell_command_args_supports_string_and_list():
@@ -326,38 +288,6 @@ def test_run_unlock_shell_command_falls_back_when_unlock_command_is_whitespace(
     assert calls == [("known-cmd", "homekey-authenticated")]
 
 
-def test_run_shell_command_with_response_captures_output(monkeypatch):
-    service = Service(FakeCLF(), FakeRepository())
-
-    def fake_run(*args, **kwargs):
-        return subprocess.CompletedProcess(
-            args=["echo", "hello"], returncode=0, stdout="hello\n", stderr=""
-        )
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    result = service._run_shell_command_with_response("echo hello", "test")
-    assert result == {
-        "ok": True,
-        "command": ["echo", "hello"],
-        "returncode": 0,
-        "stdout": "hello\n",
-        "stderr": "",
-    }
-
-
-def test_run_shell_command_with_response_timeout(monkeypatch):
-    service = Service(FakeCLF(), FakeRepository())
-
-    def fake_run(*args, **kwargs):
-        raise subprocess.TimeoutExpired(cmd=["echo", "hello"], timeout=1)
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    result = service._run_shell_command_with_response("echo hello", "test")
-    assert result["ok"] is False
-    assert result["error"] == "command-timeout"
-    assert result["command"] == ["echo", "hello"]
-
-
 def test_run_shell_command_logs_failure_on_non_zero_exit(monkeypatch):
     service = Service(FakeCLF(), FakeRepository())
 
@@ -403,26 +333,6 @@ def test_run_shell_command_uses_working_directory(monkeypatch, tmp_path):
     monkeypatch.setattr(subprocess, "Popen", fake_popen)
 
     assert service._run_shell_command("echo hello", "test") is True
-    assert captured["kwargs"]["cwd"] == str(tmp_path)
-
-
-def test_run_shell_command_with_response_uses_working_directory(monkeypatch, tmp_path):
-    service = Service(
-        FakeCLF(),
-        FakeRepository(),
-        shell_command_working_directory=str(tmp_path),
-    )
-    captured = {}
-
-    def fake_run(*args, **kwargs):
-        captured["kwargs"] = kwargs
-        return subprocess.CompletedProcess(
-            args=["echo", "hello"], returncode=0, stdout="hello\n", stderr=""
-        )
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    result = service._run_shell_command_with_response("echo hello", "test")
-    assert result["ok"] is True
     assert captured["kwargs"]["cwd"] == str(tmp_path)
 
 

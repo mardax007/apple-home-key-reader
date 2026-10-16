@@ -74,12 +74,6 @@ def configure_homekey_service(config: dict, nfc_device, repository=None, nfc_con
         home_assistant_host=home_assistant_config.get("host", "0.0.0.0"),
         home_assistant_port=home_assistant_config.get("port", 9780),
         home_assistant_token=home_assistant_config.get("token"),
-        home_assistant_enable_shell_command=home_assistant_config.get(
-            "enable_shell_command", False
-        ),
-        home_assistant_shell_command_whitelist=home_assistant_config.get(
-            "shell_command_whitelist", []
-        ),
         shell_command_working_directory=nfc_config.get(
             "shell_command_working_directory"
         ),

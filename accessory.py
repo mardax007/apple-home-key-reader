@@ -29,6 +29,7 @@ class Lock(Accessory):
         self.add_lock_service()
         self.add_nfc_access_service()
         self.add_unpair_hook()
+        self.add_set_characteristics_hook()
 
     def on_endpoint_authenticated(self, endpoint):
         if not self.service.on_unlock_shell_command:
@@ -63,6 +64,22 @@ class Lock(Accessory):
             self.on_unpair(client_uuid)
 
         self.driver.unpair = patched_unpair
+
+    def add_set_characteristics_hook(self):
+        # HAP-python passes the sender address to the driver's set_characteristics but
+        # not to setter callbacks, so record it for the duration of the write.
+        # (Characteristic uses __slots__, so its methods cannot be wrapped per instance.)
+        set_characteristics = self.driver.set_characteristics
+
+        @functools.wraps(set_characteristics)
+        def patched_set_characteristics(chars_query, client_addr):
+            self._lock_target_sender = client_addr
+            try:
+                return set_characteristics(chars_query, client_addr)
+            finally:
+                self._lock_target_sender = None
+
+        self.driver.set_characteristics = patched_set_characteristics
 
     def add_preload_service(self, service, chars=None, unique_id=None):
         """Create a service with the given name and add it to this acc."""
@@ -104,7 +121,6 @@ class Lock(Accessory):
             setter_callback=self.set_lock_target_state,
             value=0,
         )
-        self._capture_lock_target_sender()
 
         self.service_lock_management = self.add_preload_service("LockManagement")
 
@@ -117,21 +133,6 @@ class Lock(Accessory):
             "Version",
             getter_callback=self.get_lock_version,
         )
-
-    def _capture_lock_target_sender(self):
-        # HAP-python passes the sender address to client_update_value but not to the
-        # setter callback, so record it for the duration of the write.
-        original = self.lock_target_state.client_update_value
-
-        @functools.wraps(original)
-        def client_update_value(value, sender_client_addr=None):
-            self._lock_target_sender = sender_client_addr
-            try:
-                return original(value, sender_client_addr)
-            finally:
-                self._lock_target_sender = None
-
-        self.lock_target_state.client_update_value = client_update_value
 
     @staticmethod
     def _format_client_address(address):

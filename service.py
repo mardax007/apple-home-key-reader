@@ -1,11 +1,12 @@
 import base64
+from collections import namedtuple
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import logging
 import os
 import shlex
-import shutil
+import signal
 import socket
 import subprocess
 import time
@@ -47,6 +48,9 @@ from util.structable import pack_into_base64_string, unpack_from_base64_string
 
 log = logging.getLogger()
 
+# One reserved door run; token tells a run's own exit apart from a stale one
+UnlockRun = namedtuple("UnlockRun", ["token", "actor_key", "started_at"])
+
 
 class Service:
     UNCONFIGURED_READER_PRIVATE_KEY = bytes.fromhex("00" * 32)
@@ -56,6 +60,12 @@ class Service:
     DEFAULT_SHELL_COMMAND_WORKING_DIRECTORY = os.path.dirname(
         os.path.abspath(__file__)
     )
+    # Ignore the same actor triggering again this soon after its run ended (e.g. a card left on the reader)
+    UNLOCK_REPEAT_SUPPRESS_SECONDS = 5
+    # An unlock command still running after this is killed
+    UNLOCK_MAX_RUN_SECONDS = 30
+    # Backstop if a run's exit is never reported (e.g. its monitor thread could not start)
+    UNLOCK_SLOT_EXPIRY_SECONDS = UNLOCK_MAX_RUN_SECONDS + 10
 
     @staticmethod
     def _parse_bool(value, default=False):
@@ -99,8 +109,6 @@ class Service:
         home_assistant_host: str = "0.0.0.0",
         home_assistant_port: int = 9780,
         home_assistant_token: str = None,
-        home_assistant_enable_shell_command: bool = False,
-        home_assistant_shell_command_whitelist=None,
         shell_command_working_directory: str = None,
     ) -> None:
         self.repository = repository
@@ -130,13 +138,6 @@ class Service:
         self.home_assistant_host = home_assistant_host
         self.home_assistant_port = int(home_assistant_port)
         self.home_assistant_token = home_assistant_token
-        self.home_assistant_enable_shell_command = self._parse_bool(
-            home_assistant_enable_shell_command
-        )
-        whitelist = home_assistant_shell_command_whitelist or []
-        self.home_assistant_shell_command_whitelist = [
-            str(item).strip() for item in whitelist if str(item).strip()
-        ]
         if isinstance(shell_command_working_directory, str):
             shell_command_working_directory = shell_command_working_directory.strip()
         self.shell_command_working_directory = (
@@ -176,6 +177,11 @@ class Service:
         self._home_assistant_zeroconf = None
         self._home_assistant_service_info = None
         self._nfc_uids_lock = Lock()
+        # Only one unlock command may drive the door at a time
+        self._unlock_slot_lock = Lock()
+        self._unlock_run = None
+        self._unlock_run_counter = 0
+        self._last_unlock_exit_at_by_actor = {}
         # Small bounded pool prevents unbounded thread creation if many tags are read quickly;
         # waiting on process exits is lightweight and 2 workers is sufficient here.
         # It is shut down in stop() with wait=False to avoid blocking shutdown on long scripts.
@@ -443,7 +449,7 @@ class Service:
         with open(self.access_log_path, "a", encoding="utf-8") as handle:
             handle.write(json.dumps(event) + "\n")
 
-    def _run_shell_command(self, command, reason):
+    def _run_shell_command(self, command, reason, on_exit=None, timeout_seconds=None):
         if command in (None, ""):
             return False
         log.info(f'Running shell command for "{reason}" event')
@@ -460,13 +466,27 @@ class Service:
                 start_new_session=True,
             )
             try:
-                self._shell_command_monitor_pool.submit(
-                    self._wait_for_shell_command_exit, process, reason, command_args
-                )
+                if on_exit is None:
+                    self._shell_command_monitor_pool.submit(
+                        self._wait_for_shell_command_exit, process, reason, command_args
+                    )
+                else:
+                    # Own thread so the exit handler never queues behind other commands
+                    # and still runs after stop() shuts the shared pool down.
+                    Thread(
+                        target=self._wait_for_shell_command_exit,
+                        args=(process, reason, command_args, on_exit, timeout_seconds),
+                        name=f"shell-command-exit-{reason}",
+                        daemon=True,
+                    ).start()
             except Exception:
                 log.exception(
                     f'Could not start shell command monitor for "{reason}" event: {command_args}'
                 )
+                if on_exit is not None:
+                    # Nobody would report this run's exit, so stop it and report it as not started
+                    self._kill_process_group(process)
+                    return False
             return True
         except Exception:
             log.exception(
@@ -474,28 +494,48 @@ class Service:
             )
             return False
 
-    def _wait_for_shell_command_exit(self, process, reason, command_args):
+    def _wait_for_shell_command_exit(
+        self, process, reason, command_args, on_exit=None, timeout_seconds=None
+    ):
         try:
-            returncode = process.wait()
+            if timeout_seconds is None:
+                returncode = process.wait()
+            else:
+                try:
+                    returncode = process.wait(timeout=timeout_seconds)
+                except subprocess.TimeoutExpired:
+                    log.error(
+                        f'Shell command for "{reason}" event still running after {timeout_seconds} s, killing it: {command_args}'
+                    )
+                    self._kill_process_group(process)
+                    returncode = process.wait()
             if returncode != 0:
                 log.error(
                     f'Shell command for "{reason}" event failed with exit code {returncode}: {command_args}'
                 )
-            # If this was the unlock command, notify the service consumer (e.g. accessory)
-            try:
-                if reason == "home-unlock":
-                    callback = getattr(self, "on_unlock_shell_command_complete", None)
-                    if callable(callback):
-                        try:
-                            callback()
-                        except Exception:
-                            log.exception("on_unlock_shell_command_complete callback failed")
-            except Exception:
-                log.exception("Error while handling shell command completion callback")
         except Exception:
             log.exception(
                 f'Could not monitor shell command for "{reason}" event: {command_args}'
             )
+        finally:
+            if on_exit is not None:
+                try:
+                    on_exit()
+                except Exception:
+                    log.exception(f'Exit handler for "{reason}" event failed')
+
+    @staticmethod
+    def _kill_process_group(process):
+        # Commands start in their own session, so on POSIX this also stops their children
+        try:
+            if hasattr(os, "killpg"):
+                os.killpg(process.pid, signal.SIGKILL)
+            else:
+                process.kill()
+        except ProcessLookupError:
+            pass
+        except Exception:
+            log.exception(f"Could not kill process {getattr(process, 'pid', None)}")
 
     @staticmethod
     def _prepare_shell_command_args(command):
@@ -508,16 +548,30 @@ class Service:
     def run_unlock_shell_command(
         self, reason, uid=None, name=None, actor=None, actor_type=None, source="unlock", details=None
     ):
-        command_started = self._run_shell_command(self.on_unlock_shell_command, reason)
+        token, skip_reason = self._claim_unlock_slot(source, actor)
+        if skip_reason is None:
+            command_started = self._run_shell_command(
+                self.on_unlock_shell_command,
+                reason,
+                on_exit=lambda: self._on_unlock_command_exit(token),
+                timeout_seconds=self.UNLOCK_MAX_RUN_SECONDS,
+            )
+            if not command_started:
+                self._release_unlock_slot(token)
+        else:
+            command_started = False
+            log.info(f'Skipping unlock for "{reason}" event: {skip_reason}')
         unlock_details = dict(details or {})
         unlock_details["reason"] = reason
         unlock_details["command_started"] = command_started
+        if skip_reason is not None:
+            unlock_details["skipped"] = skip_reason
         if actor is not None:
             unlock_details["actor"] = actor
         if actor_type is not None:
             unlock_details["actor_type"] = actor_type
         self._append_access_log(
-            event_type="door_unlocked",
+            event_type="door_unlocked" if skip_reason is None else "door_unlock_skipped",
             source=source,
             uid=uid,
             name=name,
@@ -525,76 +579,79 @@ class Service:
         )
         return command_started
 
-    def _run_shell_command_with_response(self, command, reason, timeout_seconds=30):
-        command_args = self._prepare_shell_command_args(command)
-        if not command_args:
-            return {
-                "ok": False,
-                "error": "invalid-command",
-                "details": "command must be a non-empty string or argument array",
-            }
-
-        log.info(f'Running shell command for "{reason}" event with response capture')
-        try:
-            result = subprocess.run(
-                command_args,
-                shell=False,
-                cwd=self.shell_command_working_directory,
-                capture_output=True,
-                text=True,
-                timeout=timeout_seconds,
-                check=False,
-            )
-            return {
-                "ok": result.returncode == 0,
-                "command": command_args,
-                "returncode": result.returncode,
-                "stdout": result.stdout,
-                "stderr": result.stderr,
-            }
-        except subprocess.TimeoutExpired as exc:
-            return {
-                "ok": False,
-                "command": command_args,
-                "error": "command-timeout",
-                "details": str(exc),
-            }
-        except Exception as exc:
-            log.exception(
-                f'Could not run shell command for "{reason}" event: {command}'
-            )
-            return {
-                "ok": False,
-                "command": command_args,
-                "error": "command-execution-failed",
-                "details": str(exc),
-            }
-
-    def _is_remote_shell_command_allowed(self, command):
-        if not self.home_assistant_enable_shell_command:
-            return False
-        command_args = self._prepare_shell_command_args(command)
-        if not command_args:
-            return False
-        executable = command_args[0]
-        executable_path = (
-            executable if os.path.isabs(executable) else shutil.which(executable)
+    def _is_unlock_slot_busy(self, now):
+        return (
+            self._unlock_run is not None
+            and now - self._unlock_run.started_at < self.UNLOCK_SLOT_EXPIRY_SECONDS
         )
-        if executable_path in (None, ""):
-            return False
-        resolved_executable = os.path.realpath(executable_path)
-        if not self.home_assistant_shell_command_whitelist:
+
+    def _claim_unlock_slot(self, source, actor):
+        """Reserve the door for one unlock run.
+
+        Returns (token, None) when reserved, or (None, skip_reason) when not.
+        """
+        now = time.monotonic()
+        with self._unlock_slot_lock:
+            if self._is_unlock_slot_busy(now):
+                return None, "already-running"
+            recent = {
+                key: at
+                for key, at in self._last_unlock_exit_at_by_actor.items()
+                if now - at < self.UNLOCK_REPEAT_SUPPRESS_SECONDS
+            }
+            self._last_unlock_exit_at_by_actor = recent
+            key = (source, actor)
+            if key in recent:
+                return None, "repeat-trigger"
+            self._unlock_run_counter += 1
+            self._unlock_run = UnlockRun(
+                token=self._unlock_run_counter, actor_key=key, started_at=now
+            )
+            return self._unlock_run.token, None
+
+    def _release_unlock_slot(self, token):
+        with self._unlock_slot_lock:
+            if self._unlock_run is not None and self._unlock_run.token == token:
+                self._unlock_run = None
+
+    def is_unlock_command_running(self):
+        with self._unlock_slot_lock:
+            return self._is_unlock_slot_busy(time.monotonic())
+
+    def call_if_unlock_running(self, action):
+        """Run action while holding the unlock slot, only if an unlock is running."""
+        with self._unlock_slot_lock:
+            if not self._is_unlock_slot_busy(time.monotonic()):
+                return False
+            action()
             return True
 
-        for allowed in self.home_assistant_shell_command_whitelist:
-            if "/" in allowed:
-                if resolved_executable == os.path.realpath(allowed):
-                    return True
-                continue
-            allowed_path = shutil.which(allowed)
-            if allowed_path and resolved_executable == os.path.realpath(allowed_path):
-                return True
-        return False
+    def call_if_unlock_idle(self, action):
+        """Run action while holding the unlock slot, only if no unlock is running."""
+        with self._unlock_slot_lock:
+            if self._is_unlock_slot_busy(time.monotonic()):
+                return False
+            action()
+            return True
+
+    def _on_unlock_command_exit(self, token):
+        with self._unlock_slot_lock:
+            run = self._unlock_run
+            if run is not None and run.token != token:
+                # A newer run owns the door now; leave its slot and lock state alone
+                log.warning(f"Ignoring exit of stale unlock run {token}")
+                return
+            if run is not None:
+                self._unlock_run = None
+                self._last_unlock_exit_at_by_actor = {
+                    **self._last_unlock_exit_at_by_actor,
+                    run.actor_key: time.monotonic(),
+                }
+            # With no run owning the door (e.g. this run's slot expired), re-locking is still correct
+            # Re-lock under the slot lock so a new unlock cannot interleave with it
+            callback = getattr(self, "on_unlock_shell_command_complete", None)
+            if callable(callback):
+                callback()
 
     @staticmethod
     def _read_json_body(request):
@@ -677,12 +734,6 @@ class Service:
                         source="home-assistant",
                     )
                     return service._write_home_assistant_response(self, 200, {"ok": True})
-                if path == "/ha/run-known-shell-command":
-                    result = service._run_shell_command_with_response(
-                        service.on_known_nfc_shell_command,
-                        "home-assistant-known-shell",
-                    )
-                    return service._write_home_assistant_response(self, 200, result)
                 if path == "/ha/nfc/known/add":
                     changed = service.add_known_nfc_uid(
                         payload.get("uid"), payload.get("name")
@@ -705,36 +756,6 @@ class Service:
                     return service._write_home_assistant_response(
                         self, 200, {"ok": True, "changed": changed}
                     )
-                if path == "/ha/shell/run":
-                    command = payload.get("command")
-                    if not service.home_assistant_enable_shell_command:
-                        return service._write_home_assistant_response(
-                            self,
-                            403,
-                            {"ok": False, "error": "remote-shell-command-disabled"},
-                        )
-                    command_args = service._prepare_shell_command_args(command)
-                    if not command_args:
-                        return service._write_home_assistant_response(
-                            self,
-                            400,
-                            {
-                                "ok": False,
-                                "error": "invalid-command",
-                                "details": (
-                                    "command must be a non-empty string "
-                                    "or JSON array of arguments"
-                                ),
-                            },
-                        )
-                    if not service._is_remote_shell_command_allowed(command):
-                        return service._write_home_assistant_response(
-                            self, 403, {"ok": False, "error": "command-not-allowed"}
-                        )
-                    result = service._run_shell_command_with_response(
-                        command_args, "home-assistant-remote-shell"
-                    )
-                    return service._write_home_assistant_response(self, 200, result)
                 return service._write_home_assistant_response(
                     self, 404, {"ok": False, "error": "not-found"}
                 )
@@ -747,13 +768,6 @@ class Service:
         if self.home_assistant_token in (None, ""):
             log.warning(
                 "Home Assistant API is enabled without a token; requests will be unauthenticated"
-            )
-        if (
-            self.home_assistant_enable_shell_command
-            and not self.home_assistant_shell_command_whitelist
-        ):
-            log.warning(
-                "Home Assistant remote shell command feature is enabled with an empty whitelist; all commands are allowed"
             )
         try:
             handler_cls = self._build_home_assistant_handler()

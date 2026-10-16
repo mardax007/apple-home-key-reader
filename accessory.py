@@ -19,6 +19,8 @@ class Lock(Accessory):
 
         self._lock_target_state = lock_state_at_startup
         self._lock_current_state = lock_state_at_startup
+        # Address of the HomeKit client whose LockTargetState write is being handled
+        self._lock_target_sender = None
 
         self.service = service
         self.service.on_endpoint_authenticated = self.on_endpoint_authenticated
@@ -29,12 +31,27 @@ class Lock(Accessory):
         self.add_unpair_hook()
 
     def on_endpoint_authenticated(self, endpoint):
-        self._lock_target_state = 0 if self._lock_current_state else 1
-        log.info(
-            f"Toggling lock state due to endpoint authentication event {self._lock_target_state} -> {self._lock_current_state} {endpoint}"
-        )
+        if not self.service.on_unlock_shell_command:
+            # No door command configured: keep behaving as a virtual lock that toggles
+            self._lock_target_state = 0 if self._lock_current_state else 1
+            log.info(
+                f"Toggling lock state due to endpoint authentication event {self._lock_target_state} -> {self._lock_current_state} {endpoint}"
+            )
+            self.lock_target_state.set_value(self._lock_target_state, should_notify=True)
+            self._lock_current_state = self._lock_target_state
+            self.lock_current_state.set_value(self._lock_current_state, should_notify=True)
+            return
+        # Shown as unlocked until the unlock command exits, which re-locks.
+        # Checked and set under the service's unlock lock so the exit cannot slip in between.
+        if self.service.call_if_unlock_running(lambda: self._set_lock_state(0)):
+            log.info(f"Unlocked by endpoint authentication event {endpoint}")
+        else:
+            log.info(f"Endpoint authenticated but no unlock is running, lock state unchanged {endpoint}")
+
+    def _set_lock_state(self, value):
+        self._lock_target_state = value
+        self._lock_current_state = value
         self.lock_target_state.set_value(self._lock_target_state, should_notify=True)
-        self._lock_current_state = self._lock_target_state
         self.lock_current_state.set_value(self._lock_current_state, should_notify=True)
 
     def add_unpair_hook(self):
@@ -87,6 +104,7 @@ class Lock(Accessory):
             setter_callback=self.set_lock_target_state,
             value=0,
         )
+        self._capture_lock_target_sender()
 
         self.service_lock_management = self.add_preload_service("LockManagement")
 
@@ -99,6 +117,29 @@ class Lock(Accessory):
             "Version",
             getter_callback=self.get_lock_version,
         )
+
+    def _capture_lock_target_sender(self):
+        # HAP-python passes the sender address to client_update_value but not to the
+        # setter callback, so record it for the duration of the write.
+        original = self.lock_target_state.client_update_value
+
+        @functools.wraps(original)
+        def client_update_value(value, sender_client_addr=None):
+            self._lock_target_sender = sender_client_addr
+            try:
+                return original(value, sender_client_addr)
+            finally:
+                self._lock_target_sender = None
+
+        self.lock_target_state.client_update_value = client_update_value
+
+    @staticmethod
+    def _format_client_address(address):
+        if not address:
+            return None
+        if isinstance(address, (tuple, list)) and len(address) >= 2:
+            return f"{address[0]}:{address[1]}"
+        return str(address)
 
     def add_nfc_access_service(self):
         self.service_nfc = self.add_preload_service("NFCAccess")
@@ -134,26 +175,31 @@ class Lock(Accessory):
         return self._lock_target_state
 
     def set_lock_target_state(self, value):
-        log.info(f"set_lock_target_state {value}")
+        client_address = self._format_client_address(self._lock_target_sender)
+        log.info(f"set_lock_target_state {value} from {client_address}")
         self._lock_target_state = self._lock_current_state = value
         self.lock_current_state.set_value(self._lock_current_state, should_notify=True)
         if value == 0:
-            self.service.run_unlock_shell_command(
+            command_started = self.service.run_unlock_shell_command(
                 "home-unlock",
                 actor="home-app",
                 actor_type="homekit-client",
                 source="homekit",
+                details={"client_address": client_address} if client_address else None,
             )
+            # Door did not move and no run will re-lock it, so report locked right away
+            if (
+                not command_started
+                and self.service.on_unlock_shell_command
+                and self.service.call_if_unlock_idle(lambda: self._set_lock_state(1))
+            ):
+                log.info("Unlock was not started, re-locked")
         return self._lock_target_state
 
     def _on_unlock_shell_command_complete(self):
         log.info("Unlock shell command completed, re-locking")
         try:
-            # Set lock target and current to locked (1) and notify HomeKit
-            self._lock_target_state = 1
-            self._lock_current_state = 1
-            self.lock_target_state.set_value(self._lock_target_state, should_notify=True)
-            self.lock_current_state.set_value(self._lock_current_state, should_notify=True)
+            self._set_lock_state(1)
         except Exception:
             log.exception("Failed to set lock state after shell command completion")
 

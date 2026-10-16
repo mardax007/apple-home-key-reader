@@ -100,8 +100,7 @@ Configuration is done via a JSON file `configuration.json`, with the following 4
   * `new_uids_file`: json file where newly seen unknown regular NFC UID values are saved in `{"uids": [...]}` format;
   * `access_log_file`: jsonl file where every known/unknown NFC read, Home Key authentication event, and door unlock event is appended. Unlock events (`event_type=door_unlocked`) include `details.reason`, `details.actor`, and `details.actor_type` to show why and by whom unlock was triggered;
   * `on_unlock_shell_command`: shell command to run whenever the lock is unlocked (home key authentication, known regular NFC UID, or Home app unlock);
-  * `on_known_shell_command`: shell command used by Home Assistant integration endpoint `POST /ha/run-known-shell-command`.  
-    If `on_unlock_shell_command` is empty, this value is also used for unlock events for backward compatibility;
+  * `on_known_shell_command`: legacy fallback; if `on_unlock_shell_command` is empty, this value is used for unlock events;
   * `on_unknown_shell_command`: shell command to run when an unknown regular NFC UID is read (after storing it in `new_uids_file`);
   * `shell_command_working_directory`: optional working directory used for all configured shell commands.  
     Defaults to the project directory (the folder containing `service.py`), so relative script paths like `scripts/unlock.py` are resolved there;
@@ -127,11 +126,6 @@ Configuration is done via a JSON file `configuration.json`, with the following 4
       * `host`: API bind host, default `0.0.0.0` for LAN discovery;
       * `port`: API listen port, default `9780`;
       * `token`: optional shared token (`Authorization: Bearer <token>` or `X-HA-Token`);
-      * `enable_shell_command`: allows Home Assistant to run shell commands via `/ha/shell/run` (subject to whitelist when configured). Set to `false` to disable this feature;
-      * `shell_command_whitelist`: whitelist for `/ha/shell/run`.  
-        If this list is empty, all commands are allowed (when `enable_shell_command=true`).  
-        If non-empty, only commands whose executable matches a whitelist entry are allowed.
-        **Security warning**: enabling shell commands with an empty whitelist effectively grants full command execution on the Raspberry Pi. Keep this disabled unless you trust your Home Assistant network and API token setup.
 
 # Home Assistant integration
 
@@ -149,32 +143,26 @@ For "integration popup" onboarding in Home Assistant:
 5. Home Assistant should discover it and show **Apple Home Key Reader** in Integrations.
 
 After setup, use Home Assistant services from this integration:
-* `apple_home_key_reader.run_known_shell_command`
+* `apple_home_key_reader.unlock`
 * `apple_home_key_reader.add_known_uid`
 * `apple_home_key_reader.remove_known_uid`
 * `apple_home_key_reader.add_unknown_uid`
 * `apple_home_key_reader.remove_unknown_uid`
-* `apple_home_key_reader.run_shell_command`
 * `apple_home_key_reader.list_known_uids`
 * `apple_home_key_reader.list_unknown_uids`
 
-`run_shell_command` accepts either:
-* a string: `"echo hello"`
-* an argument array: `["echo", "hello"]`
-
-Shell command services now return command execution details (`ok`, `returncode`, `stdout`, `stderr`) when called with response capture in Home Assistant.
+Home Assistant cannot run arbitrary shell commands on the Pi; `unlock` runs the configured unlock command through the same one-run-at-a-time guard as the reader.
 
 Underlying Pi API endpoints:
 
 * `GET /ha/health`
 * `GET /ha/nfc/known/list`
 * `GET /ha/nfc/unknown/list`
-* `POST /ha/run-known-shell-command` - runs `nfc.on_known_shell_command`
+* `POST /ha/unlock` - runs the unlock command
 * `POST /ha/nfc/known/add` with body `{"uid":"AABB","name":"Alice tag"}`
 * `POST /ha/nfc/known/remove` with body `{"uid":"AABB"}`
 * `POST /ha/nfc/unknown/add` with body `{"uid":"AABB"}`
 * `POST /ha/nfc/unknown/remove` with body `{"uid":"AABB"}`
-* `POST /ha/shell/run` with body `{"command":"echo hello"}` or `{"command":["echo","hello"]}` (controlled by `enable_shell_command` and `shell_command_whitelist`)
 
 
 # Project structure
